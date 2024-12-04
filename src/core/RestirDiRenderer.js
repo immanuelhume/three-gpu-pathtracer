@@ -17,7 +17,6 @@ function* renderTask() {
 		alpha,
 		material,
 	} = this;
-	const _ogScissor = new Vector4();
 	const _ogViewport = new Vector4();
 
 	const blendMaterial = _blendQuad.material;
@@ -48,99 +47,36 @@ function* renderTask() {
 		material.stratifiedTexture.next();
 		material.seed ++;
 
-		const tilesX = this.tiles.x || 1;
-		const tilesY = this.tiles.y || 1;
-		const totalTiles = tilesX * tilesY;
+        // store og state
+        const ogRenderTarget = _renderer.getRenderTarget();
+        const ogAutoClear = _renderer.autoClear;
+        _renderer.getViewport( _ogViewport );
 
-		const pxSubW = Math.ceil( w * subW );
-		const pxSubH = Math.ceil( h * subH );
-		const pxSubX = Math.floor( subX * w );
-		const pxSubY = Math.floor( subY * h );
+        _renderer.setRenderTarget( _primaryTarget );
 
-		const pxTileW = Math.ceil( pxSubW / tilesX );
-		const pxTileH = Math.ceil( pxSubH / tilesY );
+        _renderer.autoClear = false;
+        _fsQuad.render( _renderer );
 
-		for ( let y = 0; y < tilesY; y ++ ) {
+        // reset original renderer state
+        _renderer.setViewport( _ogViewport );
+        _renderer.setRenderTarget( ogRenderTarget );
+        _renderer.autoClear = ogAutoClear;
 
-			for ( let x = 0; x < tilesX; x ++ ) {
+        // swap and blend alpha targets
+        if ( alpha ) {
 
-				// store og state
-				const ogRenderTarget = _renderer.getRenderTarget();
-				const ogAutoClear = _renderer.autoClear;
-				const ogScissorTest = _renderer.getScissorTest();
-				_renderer.getScissor( _ogScissor );
-				_renderer.getViewport( _ogViewport );
+            blendMaterial.target1 = blendTarget1.texture;
+            blendMaterial.target2 = _primaryTarget.texture;
 
-				let tx = x;
-				let ty = y;
-				if ( ! this.stableTiles ) {
+            _renderer.setRenderTarget( blendTarget2 );
+            _blendQuad.render( _renderer );
+            _renderer.setRenderTarget( ogRenderTarget );
 
-					const tileIndex = ( this._currentTile ) % ( tilesX * tilesY );
-					tx = tileIndex % tilesX;
-					ty = ~ ~ ( tileIndex / tilesX );
+        }
 
-					this._currentTile = tileIndex + 1;
+        this.samples += 1;
 
-				}
-
-				// set the scissor and the viewport on the render target
-				// note that when using the webgl renderer set viewport the device pixel ratio
-				// is multiplied into the field causing some pixels to not be rendered
-				const reverseTy = tilesY - ty - 1;
-				_primaryTarget.scissor.set(
-					pxSubX + tx * pxTileW,
-					pxSubY + reverseTy * pxTileH,
-					Math.min( pxTileW, pxSubW - tx * pxTileW ),
-					Math.min( pxTileH, pxSubH - reverseTy * pxTileH ),
-				);
-
-				_primaryTarget.viewport.set(
-					pxSubX,
-					pxSubY,
-					pxSubW,
-					pxSubH,
-				);
-
-				// three.js renderer takes values relative to the current pixel ratio
-				_renderer.setRenderTarget( _primaryTarget );
-				_renderer.setScissorTest( true );
-
-				_renderer.autoClear = false;
-				_fsQuad.render( _renderer );
-
-				// reset original renderer state
-				_renderer.setViewport( _ogViewport );
-				_renderer.setScissor( _ogScissor );
-				_renderer.setScissorTest( ogScissorTest );
-				_renderer.setRenderTarget( ogRenderTarget );
-				_renderer.autoClear = ogAutoClear;
-
-				// swap and blend alpha targets
-				if ( alpha ) {
-
-					blendMaterial.target1 = blendTarget1.texture;
-					blendMaterial.target2 = _primaryTarget.texture;
-
-					_renderer.setRenderTarget( blendTarget2 );
-					_blendQuad.render( _renderer );
-					_renderer.setRenderTarget( ogRenderTarget );
-
-				}
-
-				this.samples += ( 1 / totalTiles );
-
-				// round the samples value if we've finished the tiles
-				if ( x === tilesX - 1 && y === tilesY - 1 ) {
-
-					this.samples = Math.round( this.samples );
-
-				}
-
-				yield;
-
-			}
-
-		}
+        yield;
 
 		[ blendTarget1, blendTarget2 ] = [ blendTarget2, blendTarget1 ];
 

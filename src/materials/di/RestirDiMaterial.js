@@ -27,252 +27,256 @@ import * as PTBVHGLSL from '../../shader/bvh/index.js';
 import * as RenderGLSL from '../pathtracing/glsl/index.js';
 import { PhysicalPathTracingMaterial } from '../pathtracing/PhysicalPathTracingMaterial.js';
 
+export const Pass = {
+	"GenSample": 0,
+	"ShadePixel": 1,
+}
+
 export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
     constructor( parameters ) {
 
-        super( {
+        const fragmentShader = /* glsl */`
+			#define RAY_OFFSET 1e-4
+			#define INFINITY 1e20
 
-			transparent: true,
-			depthWrite: false,
+			precision highp isampler2D;
+			precision highp usampler2D;
+			precision highp sampler2DArray;
+			vec4 envMapTexelToLinear( vec4 a ) { return a; }
+			#include <common>
 
-            fragmentShader: /* glsl */`
-				#define RAY_OFFSET 1e-4
-				#define INFINITY 1e20
+			// bvh intersection
+			${ BVHShaderGLSL.common_functions }
+			${ BVHShaderGLSL.bvh_struct_definitions }
+			${ BVHShaderGLSL.bvh_ray_functions }
 
-				precision highp isampler2D;
-				precision highp usampler2D;
-				precision highp sampler2DArray;
-				vec4 envMapTexelToLinear( vec4 a ) { return a; }
-				#include <common>
+			// random
+			#if RANDOM_TYPE == 2 	// Stratified List
 
-				// bvh intersection
-				${ BVHShaderGLSL.common_functions }
-				${ BVHShaderGLSL.bvh_struct_definitions }
-				${ BVHShaderGLSL.bvh_ray_functions }
+				${ RandomGLSL.stratified_functions }
 
-				// random
-				#if RANDOM_TYPE == 2 	// Stratified List
-
-					${ RandomGLSL.stratified_functions }
-
-				#elif RANDOM_TYPE == 1 	// Sobol
-
-					${ RandomGLSL.pcg_functions }
-					${ RandomGLSL.sobol_common }
-					${ RandomGLSL.sobol_functions }
-
-					#define rand(v) sobol(v)
-					#define rand2(v) sobol2(v)
-					#define rand3(v) sobol3(v)
-					#define rand4(v) sobol4(v)
-
-				#else 					// PCG
+			#elif RANDOM_TYPE == 1 	// Sobol
 
 				${ RandomGLSL.pcg_functions }
+				${ RandomGLSL.sobol_common }
+				${ RandomGLSL.sobol_functions }
 
-					// Using the sobol functions seems to break the the compiler on MacOS
-					// - specifically the "sobolReverseBits" function.
-					uint sobolPixelIndex = 0u;
-					uint sobolPathIndex = 0u;
-					uint sobolBounceIndex = 0u;
+				#define rand(v) sobol(v)
+				#define rand2(v) sobol2(v)
+				#define rand3(v) sobol3(v)
+				#define rand4(v) sobol4(v)
 
-					#define rand(v) pcgRand()
-					#define rand2(v) pcgRand2()
-					#define rand3(v) pcgRand3()
-					#define rand4(v) pcgRand4()
+			#else 					// PCG
 
-				#endif
+			${ RandomGLSL.pcg_functions }
 
-				// uniform structs
-				${ StructsGLSL.camera_struct }
-				${ StructsGLSL.lights_struct }
-				${ StructsGLSL.equirect_struct }
-				${ StructsGLSL.material_struct }
-				${ StructsGLSL.surface_record_struct }
-				${ StructsGLSL.emissive_triangles_struct }
+				// Using the sobol functions seems to break the the compiler on MacOS
+				// - specifically the "sobolReverseBits" function.
+				uint sobolPixelIndex = 0u;
+				uint sobolPathIndex = 0u;
+				uint sobolBounceIndex = 0u;
 
-				// common
-				${ CommonGLSL.texture_sample_functions }
-				${ CommonGLSL.fresnel_functions }
-				${ CommonGLSL.util_functions }
-				${ CommonGLSL.math_functions }
-				${ CommonGLSL.shape_intersection_functions }
+				#define rand(v) pcgRand()
+				#define rand2(v) pcgRand2()
+				#define rand3(v) pcgRand3()
+				#define rand4(v) pcgRand4()
 
-				// environment
-				uniform EquirectHdrInfo envMapInfo;
-				uniform mat4 environmentRotation;
-				uniform float environmentIntensity;
+			#endif
 
-				// lighting
-				uniform sampler2DArray iesProfiles;
-				uniform LightsInfo lights;
-				uniform EmissiveTrianglesInfo emissiveTriangles;
+			// uniform structs
+			${ StructsGLSL.camera_struct }
+			${ StructsGLSL.lights_struct }
+			${ StructsGLSL.equirect_struct }
+			${ StructsGLSL.material_struct }
+			${ StructsGLSL.surface_record_struct }
+			${ StructsGLSL.emissive_triangles_struct }
 
-				// background
-				uniform float backgroundBlur;
-				uniform float backgroundAlpha;
-				#if FEATURE_BACKGROUND_MAP
+			// common
+			${ CommonGLSL.texture_sample_functions }
+			${ CommonGLSL.fresnel_functions }
+			${ CommonGLSL.util_functions }
+			${ CommonGLSL.math_functions }
+			${ CommonGLSL.shape_intersection_functions }
 
-				uniform sampler2D backgroundMap;
-				uniform mat4 backgroundRotation;
-				uniform float backgroundIntensity;
+			// environment
+			uniform EquirectHdrInfo envMapInfo;
+			uniform mat4 environmentRotation;
+			uniform float environmentIntensity;
 
-				#endif
+			// lighting
+			uniform sampler2DArray iesProfiles;
+			uniform LightsInfo lights;
+			uniform EmissiveTrianglesInfo emissiveTriangles;
 
-				// camera
-				uniform mat4 cameraWorldMatrix;
-				uniform mat4 invProjectionMatrix;
-				#if FEATURE_DOF
+			// background
+			uniform float backgroundBlur;
+			uniform float backgroundAlpha;
+			#if FEATURE_BACKGROUND_MAP
 
-				uniform PhysicalCamera physicalCamera;
+			uniform sampler2D backgroundMap;
+			uniform mat4 backgroundRotation;
+			uniform float backgroundIntensity;
 
-				#endif
+			#endif
 
-				// geometry
-				uniform sampler2DArray attributesArray;
-				uniform usampler2D materialIndexAttribute;
-				uniform sampler2D materials;
-				uniform sampler2DArray textures;
-				uniform BVH bvh;
+			// camera
+			uniform mat4 cameraWorldMatrix;
+			uniform mat4 invProjectionMatrix;
+			#if FEATURE_DOF
 
-				// path tracer
-				uniform int bounces;
-				uniform int transmissiveBounces;
-				uniform float filterGlossyFactor;
-				uniform int seed;
+			uniform PhysicalCamera physicalCamera;
 
-				// image
-				uniform vec2 resolution;
-				uniform float opacity;
+			#endif
 
-				varying vec2 vUv;
+			// geometry
+			uniform sampler2DArray attributesArray;
+			uniform usampler2D materialIndexAttribute;
+			uniform sampler2D materials;
+			uniform sampler2DArray textures;
+			uniform BVH bvh;
 
-				// globals
-				mat3 envRotation3x3;
-				mat3 invEnvRotation3x3;
-				float lightsDenom;
+			// path tracer
+			uniform int bounces;
+			uniform int transmissiveBounces;
+			uniform float filterGlossyFactor;
+			uniform int seed;
 
-				// sampling
-				${ SamplingGLSL.shape_sampling_functions }
-				${ SamplingGLSL.equirect_functions }
-				${ SamplingGLSL.light_sampling_functions }
+			// image
+			uniform vec2 resolution;
+			uniform float opacity;
 
-				${ PTBVHGLSL.inside_fog_volume_function }
-				${ BSDFGLSL.ggx_functions }
-				${ BSDFGLSL.sheen_functions }
-				${ BSDFGLSL.iridescence_functions }
-				${ BSDFGLSL.fog_functions }
-				${ BSDFGLSL.bsdf_functions }
+			varying vec2 vUv;
 
-				float applyFilteredGlossy( float roughness, float accumulatedRoughness ) {
+			// globals
+			mat3 envRotation3x3;
+			mat3 invEnvRotation3x3;
+			float lightsDenom;
 
-					return clamp(
-						max(
-							roughness,
-							accumulatedRoughness * filterGlossyFactor * 5.0 ),
-						0.0,
-						1.0
-					);
+			// sampling
+			${ SamplingGLSL.shape_sampling_functions }
+			${ SamplingGLSL.equirect_functions }
+			${ SamplingGLSL.light_sampling_functions }
 
-				}
+			${ PTBVHGLSL.inside_fog_volume_function }
+			${ BSDFGLSL.ggx_functions }
+			${ BSDFGLSL.sheen_functions }
+			${ BSDFGLSL.iridescence_functions }
+			${ BSDFGLSL.fog_functions }
+			${ BSDFGLSL.bsdf_functions }
 
-				${ RenderGLSL.render_structs }
-				${ RenderGLSL.camera_util_functions }
-				${ RenderGLSL.trace_scene_function }
-				${ RenderGLSL.attenuate_hit_function }
-				${ RenderGLSL.direct_light_contribution_function }
-				${ RenderGLSL.get_surface_record_function }
+			float applyFilteredGlossy( float roughness, float accumulatedRoughness ) {
 
-				struct Sample {
+				return clamp(
+					max(
+						roughness,
+						accumulatedRoughness * filterGlossyFactor * 5.0 ),
+					0.0,
+					1.0
+				);
 
-					vec3 path[3];
-					float weight;
+			}
 
-				};
+			${ RenderGLSL.render_structs }
+			${ RenderGLSL.camera_util_functions }
+			${ RenderGLSL.trace_scene_function }
+			${ RenderGLSL.attenuate_hit_function }
+			${ RenderGLSL.direct_light_contribution_function }
+			${ RenderGLSL.get_surface_record_function }
 
-                void main() {
+			// restir
 
-					// init
-					rng_initialize( gl_FragCoord.xy, seed );
-					sobolPixelIndex = ( uint( gl_FragCoord.x ) << 16 ) | uint( gl_FragCoord.y );
-					sobolPathIndex = uint( seed );
+			struct Sample {
 
-					lightsDenom =
-						( environmentIntensity == 0.0 || envMapInfo.totalSum == 0.0 ) && lights.count != 0u ?
-							float( lights.count ) :
-							float( lights.count + 1u );
+				vec3 path[3];
+				float weight;
 
-					Ray ray = getCameraRay();
+			};
 
-					Sample samp;
-					samp.path[0] = ray.origin;
+			uniform int pass;
 
-					SurfaceHit surfaceHit;
-					int hitType = traceScene( ray, surfaceHit );
+			void main() {
 
-					if ( hitType == SURFACE_HIT ) {
+				// init
+				rng_initialize( gl_FragCoord.xy, seed );
+				sobolPixelIndex = ( uint( gl_FragCoord.x ) << 16 ) | uint( gl_FragCoord.y );
+				sobolPathIndex = uint( seed );
 
-						uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-						Material material = readMaterialInfo( materials, materialIndex );
+				lightsDenom =
+					( environmentIntensity == 0.0 || envMapInfo.totalSum == 0.0 ) && lights.count != 0u ?
+						float( lights.count ) :
+						float( lights.count + 1u );
 
-						// TODO: does not accomodate transmission
-						vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-						samp.path[1] = hitPoint;
+				Ray ray = getCameraRay();
 
-						LightRecord lightRec = randomLightSample( lights.tex, iesProfiles, lights.count, hitPoint, rand3( 6 ) );
+				Sample samp;
+				samp.path[0] = ray.origin;
 
-						SurfaceRecord surf;
-						int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
-						if ( surfRecord == SKIP_SURFACE ) {
+				SurfaceHit surfaceHit;
+				int hitType = traceScene( ray, surfaceHit );
 
-							// TODO: what's the semantics of skipping a surface even
-							return;
+				if ( hitType == SURFACE_HIT ) {
 
-						}
+					uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+					Material material = readMaterialInfo( materials, materialIndex );
 
-						if ( lightRec.pdf > 0.0 && isDirectionValid( lightRec.direction, surf.normal, surf.faceNormal ) ) {
-							Ray shadowRay = Ray( hitPoint, lightRec.direction );
-							SurfaceHit surfaceHit;
-							int hitType = traceScene( shadowRay, surfaceHit );
+					// TODO: does not accomodate transmission
+					vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
+					samp.path[1] = hitPoint;
 
-							if ( hitType == SURFACE_HIT && surfaceHit.dist < lightRec.dist ) {
+					LightRecord lightRec = randomLightSample( lights.tex, iesProfiles, lights.count, hitPoint, rand3( 6 ) );
 
-								// Light is blocked
+					SurfaceRecord surf;
+					int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
+					if ( surfRecord == SKIP_SURFACE ) {
 
-							} else {
-
-								// Light is not blocked
-								vec3 pointOnLight = hitPoint + lightRec.dist * lightRec.direction;
-								float lightPdf = lightRec.pdf / lightsDenom;
-
-								samp.path[2] = pointOnLight;
-								samp.weight = 1.0 / lightPdf;
-
-								vec3 sampleColor;
-								float lightMaterialPdf = bsdfResult( -ray.direction, lightRec.direction, surf, sampleColor );
-
-								if ( lightMaterialPdf > 0.0 ) {
-
-									gl_FragColor = vec4( lightRec.emission * sampleColor * samp.weight, 1.0 );
-
-								} else {
-
-								}
-
-							}
-						}
-
+						// TODO: what's the semantics of skipping a surface even
+						return;
 
 					}
 
-                }
-            `
+					if ( lightRec.pdf > 0.0 && isDirectionValid( lightRec.direction, surf.normal, surf.faceNormal ) ) {
+						Ray shadowRay = Ray( hitPoint, lightRec.direction );
+						SurfaceHit surfaceHit;
+						int hitType = traceScene( shadowRay, surfaceHit );
 
-        } );
+						if ( hitType == SURFACE_HIT && surfaceHit.dist < lightRec.dist ) {
+
+							// Light is blocked
+
+						} else {
+
+							// Light is not blocked
+							vec3 pointOnLight = hitPoint + lightRec.dist * lightRec.direction;
+							float lightPdf = lightRec.pdf / lightsDenom;
+
+							samp.path[2] = pointOnLight;
+							samp.weight = 1.0 / lightPdf;
+
+							vec3 sampleColor;
+							float lightMaterialPdf = bsdfResult( -ray.direction, lightRec.direction, surf, sampleColor );
+
+							if ( lightMaterialPdf > 0.0 ) {
+
+								gl_FragColor = vec4( lightRec.emission * sampleColor * samp.weight, 1.0 );
+
+							}
+
+						}
+
+					}
+
+
+				}
+
+			}
+		`;
+
+		super( parameters );
+		this.fragmentShader = fragmentShader;
 
         this.setValues( parameters );
 
     }
 
-	}
+}
