@@ -1,3 +1,5 @@
+import { Vector3 } from 'three';
+
 function uuidSort( a, b ) {
 
 	if ( a.uuid < b.uuid ) return 1;
@@ -92,5 +94,77 @@ export function getLights( scene ) {
 	} );
 
 	return lights.sort( uuidSort );
+
+}
+
+export function getEmissiveTriangles( scene ) {
+
+	// TODO: fix up this function, and think of how we want to use it.
+
+	return getEmissiveMeshes( scene ).flatMap( meshToTriangles );
+
+}
+
+function getEmissiveMeshes( scene ) {
+
+	// While this supports emissive objects, it still does not support emissive
+	// textures!
+	//
+	// Would this be able to retrieve a single emissive triangle in a broader
+	// mesh?
+
+	const emissiveObject = [];
+	scene.traverse( c => {
+
+		if ( c.isMesh && c.visible ) {
+
+			if ( c.material?.emissiveIntensity > 0 && c.material?.emissive.getHex() > 0 ) {
+
+				emissiveObject.push( c );
+
+			}
+
+		}
+
+	} );
+
+	return emissiveObject.sort( uuidSort );
+
+}
+
+export function meshToTriangles( mesh ) {
+
+	const triangles = [];
+
+	const geometry = mesh.geometry;
+
+	const positionAttribute = geometry.attributes.position;
+	const indexAttribute = geometry.index;
+
+	const indices = indexAttribute ? indexAttribute.array : null;
+	const vertexCount = indexAttribute ? indexAttribute.count : positionAttribute.count;
+
+	// TODO: I think we need to iterate through groups in the geometry. Since
+	// even if the mesh is emissive, it's possible that some triangles are not?
+
+	for (let i = 0; i < vertexCount; i += 3) {
+
+		const triangle = { vertices: [], area: 0, emissiveColor: null };
+
+		for (let j = 0; j < 3; j++) {
+
+			const idx = indices ? indices[i + j] : i + j;
+
+			const vertexLocal = new Vector3().fromBufferAttribute( positionAttribute, idx )
+            const vertexWorld = mesh.localToWorld( vertexLocal );
+			triangle.vertices.push( vertexWorld );
+
+		}
+
+		triangles.push(triangle);
+
+	}
+
+	return triangles;
 
 }

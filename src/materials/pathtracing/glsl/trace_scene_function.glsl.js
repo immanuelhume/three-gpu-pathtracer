@@ -45,4 +45,20 @@ export const trace_scene_function = /* glsl */`
 
 	}
 
+	int traceScene(
+		Ray ray, inout SurfaceHit surfaceHit
+	) {
+
+		int result = NO_HIT;
+		bool hit = bvhIntersectFirstHit( bvh, ray.origin, ray.direction, surfaceHit.faceIndices, surfaceHit.faceNormal, surfaceHit.barycoord, surfaceHit.side, surfaceHit.dist );
+
+		if ( hit ) {
+
+			result = SURFACE_HIT;
+
+		}
+
+		return result;
+
+	}
 `;

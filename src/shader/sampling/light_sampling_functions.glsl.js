@@ -213,4 +213,43 @@ export const light_sampling_functions = /* glsl */`
 
 	}
 
+    EmissiveTriangle randomEmissiveTriangle( EmissiveTrianglesInfo info ) {
+
+        float x = rand( 9 );
+        uint index = uint( x * float( 17 ) );
+
+        return readEmissiveTriangleInfo( info.tex, index );
+
+    }
+
+    vec4 randomBarycentric( vec4 vertices[3] ) {
+
+        vec2 xi = vec2( rand( 11 ), rand( 13 ) );
+        float sqrtXi1 = sqrt( xi.x );
+        float b0 = 1.0 - sqrtXi1;
+        float b1 = xi.y * sqrtXi1;
+        float b2 = 1.0 - b0 - b1;
+
+        vec4 v0 = vertices[0];
+        vec4 v1 = vertices[1];
+        vec4 v2 = vertices[2];
+
+        vec4 sampledPoint = b0 * v0 + b1 * v1 + b2 * v2;
+
+        return sampledPoint;
+
+    }
+
+	vec4 randomEmissiveTriangleSample( EmissiveTrianglesInfo info ) {
+
+		// Return a random point on an emissive triangle. There is no
+		// information about the material.
+
+		EmissiveTriangle tri = randomEmissiveTriangle( info );
+		return randomBarycentric( tri.vertices );
+
+	}
+
+
+
 `;

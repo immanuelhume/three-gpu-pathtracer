@@ -9,6 +9,7 @@ import {
 import { PhysicalCameraUniform } from '../../uniforms/PhysicalCameraUniform.js';
 import { EquirectHdrInfoUniform } from '../../uniforms/EquirectHdrInfoUniform.js';
 import { LightsInfoUniformStruct } from '../../uniforms/LightsInfoUniformStruct.js';
+import { EmissiveTrianglesInfoUniformStruct } from '../../uniforms/EmissiveTrianglesInfoUniformStruct.js';
 import { AttributesTextureArray } from '../../uniforms/AttributesTextureArray.js';
 import { MaterialsTexture, MATERIAL_PIXELS } from '../../uniforms/MaterialsTexture.js';
 import { RenderTarget2DArray } from '../../uniforms/RenderTarget2DArray.js';
@@ -100,6 +101,7 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 				environmentIntensity: { value: 1.0 },
 				environmentRotation: { value: new Matrix4() },
 				envMapInfo: { value: new EquirectHdrInfoUniform() },
+				emissiveTriangles: { value: new EmissiveTrianglesInfoUniformStruct() },
 
 				// background uniforms
 				backgroundBlur: { value: 0.0 },
@@ -145,13 +147,6 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 				${ BVHShaderGLSL.bvh_struct_definitions }
 				${ BVHShaderGLSL.bvh_ray_functions }
 
-				// uniform structs
-				${ StructsGLSL.camera_struct }
-				${ StructsGLSL.lights_struct }
-				${ StructsGLSL.equirect_struct }
-				${ StructsGLSL.material_struct }
-				${ StructsGLSL.surface_record_struct }
-
 				// random
 				#if RANDOM_TYPE == 2 	// Stratified List
 
@@ -185,6 +180,14 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 
 				#endif
 
+				// uniform structs
+				${ StructsGLSL.camera_struct }
+				${ StructsGLSL.lights_struct }
+				${ StructsGLSL.equirect_struct }
+				${ StructsGLSL.material_struct }
+				${ StructsGLSL.surface_record_struct }
+				${ StructsGLSL.emissive_triangles_struct }
+
 				// common
 				${ CommonGLSL.texture_sample_functions }
 				${ CommonGLSL.fresnel_functions }
@@ -200,6 +203,7 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 				// lighting
 				uniform sampler2DArray iesProfiles;
 				uniform LightsInfo lights;
+				uniform EmissiveTrianglesInfo emissiveTriangles;
 
 				// background
 				uniform float backgroundBlur;
