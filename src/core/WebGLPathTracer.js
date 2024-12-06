@@ -212,6 +212,9 @@ export class WebGLPathTracer {
 
 	updateCamera() {
 
+		// TODO: this resets path tracer whenever the camera moves (i.e. we
+		// throw away everything done so // far), probably not good for restir
+
 		const camera = this.camera;
 		camera.updateMatrixWorld();
 
@@ -246,10 +249,8 @@ export class WebGLPathTracer {
 
 		const lights = getLights( scene );
 		const iesTextures = getIesTextures( lights );
-		const emissiveTriangles = getEmissiveTriangles( scene );
 		material.lights.updateFrom( lights, iesTextures );
 		material.iesProfiles.setTextures( renderer, iesTextures );
-		material.emissiveTriangles.updateFrom( emissiveTriangles );
 		this.reset();
 
 	}
@@ -350,6 +351,7 @@ export class WebGLPathTracer {
 			bvh,
 			bvhChanged,
 			needsMaterialIndexUpdate,
+			emissiveTriangles,
 		} = results;
 
 		this._materials = materials;
@@ -374,6 +376,8 @@ export class WebGLPathTracer {
 			material.materialIndexAttribute.updateFrom( geometry.attributes.materialIndex );
 
 		}
+
+		material.emissiveTriangles.updateFrom( emissiveTriangles );
 
 		// save previously used items
 		this._previousScene = scene;

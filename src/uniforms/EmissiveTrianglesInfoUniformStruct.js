@@ -1,15 +1,14 @@
-import { DataTexture, RGBAFormat, ClampToEdgeWrapping, FloatType, Vector3, Quaternion, Matrix4, NearestFilter } from 'three';
+import { DataTexture, RGBAFormat, RGBAIntegerFormat, ClampToEdgeWrapping, FloatType, IntType, UnsignedIntType, Vector3, Quaternion, Matrix4, NearestFilter } from 'three';
 import { bufferToHash } from '../utils/bufferToHash.js';
-
-const LIGHT_PIXELS = 3;
 
 export class EmissiveTrianglesInfoUniformStruct {
 
 	constructor() {
 
-		const tex = new DataTexture( new Float32Array( 4 ), 1, 1 );
-		tex.format = RGBAFormat;
-		tex.type = FloatType;
+		const tex = new DataTexture( new Uint32Array( 4 ), 1, 1 );
+		tex.format = RGBAIntegerFormat;
+		tex.internalFormat = "RGBA32UI";
+		tex.type = UnsignedIntType;
 		tex.wrapS = ClampToEdgeWrapping;
 		tex.wrapT = ClampToEdgeWrapping;
 		tex.generateMipmaps = false;
@@ -21,35 +20,56 @@ export class EmissiveTrianglesInfoUniformStruct {
 
 	}
 
-	updateFrom( triangles ) {
-
-		console.log( triangles );
+	updateFrom( indices ) {
 
 		const tex = this.tex;
-		const pixelCount = Math.max( triangles.length * LIGHT_PIXELS, 1 );
+		const pixelCount = Math.max( indices.length, 1 );
 		const dimension = Math.ceil( Math.sqrt( pixelCount ) );
 
 		if ( tex.image.width !== dimension ) {
 
 			tex.dispose();
 
-			tex.image.data = new Float32Array( dimension * dimension * 4 );
+			tex.image.data = new Uint32Array( dimension * dimension * 4 );
 			tex.image.width = dimension;
 			tex.image.height = dimension;
 
 		}
 
-		const floatArray = tex.image.data;
+		const data = tex.image.data;
 
-		for ( let i = 0; i < triangles.length; i ++ ) {
+		if ( indices.length % 3 != 0 ) {
 
-			const t = triangles[ i ];
+			console.warn( "No. of indices for emissive triangles is not a multiple of 3:", indices.length );
 
-			const baseIndex = i * LIGHT_PIXELS * 4;
+		}
+
+		const nTriangles = indices.length / 3;
+
+		for ( let i = 0; i < nTriangles; ++i ) {
+
+			const s = i * 4;
+			const t = i * 3;
+			data[ s + 0 ] = indices[ t + 0 ];
+			data[ s + 1 ] = indices[ t + 1 ];
+			data[ s + 2 ] = indices[ t + 2 ];
+			data[ s + 3 ] = 0.0; // unused
+
+		}
+
+		console.log( "indices", indices );
+		console.log( "emissive triangles buffer", data );
+
+		/*
+		for ( let i = 0; i < indices.length; i ++ ) {
+
+			const t = indices[ i ];
+
+			const baseIndex = i * NVERTICES * 4;
 			let index = 0;
 
 			// initialize to 0
-			for ( let p = 0; p < LIGHT_PIXELS * 4; p ++ ) {
+			for ( let p = 0; p < NVERTICES * 4; p ++ ) {
 
 				floatArray[ baseIndex + p ] = 0;
 
@@ -64,15 +84,15 @@ export class EmissiveTrianglesInfoUniformStruct {
 
 			}
 
-
 		}
+		*/
 
-		console.log(floatArray)
+		this.count = indices.length;
 
-		this.count = triangles.length;
-
-		const hash = bufferToHash( floatArray.buffer );
+		const hash = bufferToHash( data.buffer );
 		if ( this.hash !== hash ) {
+
+			console.log("indices of emissive triangles", indices);
 
 			this.hash = hash;
 			tex.needsUpdate = true;

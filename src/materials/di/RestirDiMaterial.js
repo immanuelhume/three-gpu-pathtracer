@@ -1,4 +1,4 @@
-import { ClampToEdgeWrapping, HalfFloatType, Matrix4, Vector2 } from 'three';
+import { ClampToEdgeWrapping, HalfFloatType, Matrix4, Vector2, GLSL3 } from 'three';
 import { MaterialBase } from '../MaterialBase.js';
 import {
 	MeshBVHUniformStruct, UIntVertexAttributeTexture,
@@ -34,7 +34,7 @@ export const Pass = {
 
 export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
-    constructor( parameters ) {
+    constructor( pass, parameters ) {
 
         const fragmentShader = /* glsl */`
 			#define RAY_OFFSET 1e-4
@@ -90,7 +90,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			${ StructsGLSL.equirect_struct }
 			${ StructsGLSL.material_struct }
 			${ StructsGLSL.surface_record_struct }
-			${ StructsGLSL.emissive_triangles_struct }
 
 			// common
 			${ CommonGLSL.texture_sample_functions }
@@ -107,7 +106,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			// lighting
 			uniform sampler2DArray iesProfiles;
 			uniform LightsInfo lights;
-			uniform EmissiveTrianglesInfo emissiveTriangles;
 
 			// background
 			uniform float backgroundBlur;
@@ -186,6 +184,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			// restir
 
+			${ StructsGLSL.emissive_triangles_struct }
+
+			uniform EmissiveTrianglesInfo emissiveTriangles;
+
 			struct Sample {
 
 				vec3 path[3];
@@ -193,7 +195,33 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			};
 
-			uniform int pass;
+			#if RESTIR_PASS == PASS_GEN_SAMPLE
+
+			// vec3 x0 [out0.xyz]
+			// vec3 x1 [out0.w, out1.xy]
+			// vec3 x2 [out1.zw, out2.x]
+			// float weight [out2.y]
+			// float ok [out2.z] (-ve means no sample was selected, e.g. primary ray hit nothing)
+
+			layout(location = 0) out vec4 out0;
+			layout(location = 1) out vec4 out1;
+			layout(location = 2) out vec4 out2;
+
+			void gsSetHasSample() {
+				out2.z = 1.0;
+			}
+
+			void gsSetNoSample() {
+				out2.z = -1.0;
+			}
+
+			#endif
+
+			#if RESTIR_PASS == PASS_SHADE_PIXEL
+
+			layout(location = 0) out vec4 fragColor;
+
+			#endif
 
 			void main() {
 
@@ -207,6 +235,14 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						float( lights.count ) :
 						float( lights.count + 1u );
 
+				#if RESTIR_PASS == PASS_GEN_SAMPLE
+
+				#endif
+
+				// TODO: generate sample
+
+				#if RESTIR_PASS == PASS_SHADE_PIXEL
+
 				Ray ray = getCameraRay();
 
 				Sample samp;
@@ -217,13 +253,89 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hitType == SURFACE_HIT ) {
 
-					uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-					Material material = readMaterialInfo( materials, materialIndex );
-
 					// TODO: does not accomodate transmission
 					vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
 					samp.path[1] = hitPoint;
 
+					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles );
+					float lightDist = length( emTri.barycoord - hitPoint );
+					vec3 lightDir = normalize( emTri.barycoord - hitPoint );
+
+					SurfaceRecord surf;
+					{
+
+						uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+						Material material = readMaterialInfo( materials, materialIndex );
+
+						int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
+						if ( surfRecord == SKIP_SURFACE ) {
+
+							// TODO: what's the semantics of skipping a surface even
+							fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
+							return;
+
+						}
+
+					}
+
+
+					// Light is behind the surface
+					//
+					// TODO: this does not support transmission...
+					if ( dot( lightDir, surf.normal ) < 0.0 ) {
+
+						fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
+						return;
+
+					}
+
+					if ( isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) && dot( lightDir, emTri.normal ) < 0.0 ) {
+
+						Ray shadowRay = Ray( hitPoint, lightDir );
+						SurfaceHit lightHit;
+						int hitType = traceScene( shadowRay, lightHit );
+
+						if ( hitType == SURFACE_HIT && lightHit.dist < lightDist - 0.001 ) {
+
+							// Light is blocked
+
+						} else {
+							
+							Material lightMaterial;
+							{
+								uint materialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+								lightMaterial = readMaterialInfo( materials, materialIndex );
+							}
+							vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+							float lightPdf = 1.0 / float( emissiveTriangles.count ) / emTri.tri.area;
+
+							samp.path[2] = emTri.barycoord;
+							samp.weight = 1.0 / lightPdf;
+
+							vec3 sampleColor;
+							float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
+
+							// TODO: geometry term?
+							if ( materialPdf > 0.0 ) {
+
+								fragColor = vec4( emission * sampleColor * samp.weight / lightDist / lightDist, 1.0 );
+
+							} else {
+
+								fragColor = vec4( surf.emission, 1.0 );
+
+							}
+
+						}
+
+					} else {
+
+						fragColor = vec4( surf.emission, 1.0 );
+
+					}
+
+					/*
 					LightRecord lightRec = randomLightSample( lights.tex, iesProfiles, lights.count, hitPoint, rand3( 6 ) );
 
 					SurfaceRecord surf;
@@ -258,22 +370,35 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 							if ( lightMaterialPdf > 0.0 ) {
 
-								gl_FragColor = vec4( lightRec.emission * sampleColor * samp.weight, 1.0 );
+								fragColor = vec4( lightRec.emission * sampleColor * samp.weight, 1.0 );
 
 							}
 
 						}
 
 					}
+					*/
 
-
+				} else {
+				
+					fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
+				
 				}
+
+				#endif
 
 			}
 		`;
 
 		super( parameters );
+
+		this.glslVersion = GLSL3;
 		this.fragmentShader = fragmentShader;
+
+		this.defines["PASS_GEN_SAMPLE"] = Pass.GenSample;
+		this.defines["PASS_SHADE_PIXEL"] = Pass.ShadePixel;
+
+		this.defines["RESTIR_PASS"] = pass;
 
         this.setValues( parameters );
 

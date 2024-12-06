@@ -118,7 +118,10 @@ function getEmissiveMeshes( scene ) {
 
 		if ( c.isMesh && c.visible ) {
 
-			if ( c.material?.emissiveIntensity > 0 && c.material?.emissive.getHex() > 0 ) {
+			if ( c.material?.emissiveIntensity > 0 &&
+				 c.material?.emissive.getHex() > 0 ) {
+
+				// TODO: this assumes the entire mesh is emissive, which might not be true?
 
 				emissiveObject.push( c );
 
@@ -144,12 +147,9 @@ export function meshToTriangles( mesh ) {
 	const indices = indexAttribute ? indexAttribute.array : null;
 	const vertexCount = indexAttribute ? indexAttribute.count : positionAttribute.count;
 
-	// TODO: I think we need to iterate through groups in the geometry. Since
-	// even if the mesh is emissive, it's possible that some triangles are not?
-
 	for (let i = 0; i < vertexCount; i += 3) {
 
-		const triangle = { vertices: [], area: 0, emissiveColor: null };
+		const triangle = { vertices: [], emissiveColor: null };
 
 		for (let j = 0; j < 3; j++) {
 

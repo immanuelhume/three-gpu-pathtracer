@@ -2,23 +2,23 @@ import { RGBAFormat, FloatType, Color, Vector2, WebGLRenderTarget, NoBlending, N
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { BlendMaterial } from '../materials/fullscreen/BlendMaterial.js';
 import { SobolNumberMapGenerator } from '../utils/SobolNumberMapGenerator.js';
-import { RestirDiMaterial } from '../materials/di/RestirDiMaterial.js';
+import { RestirDiMaterial, Pass } from '../materials/di/RestirDiMaterial.js';
 
 function* renderTask() {
 
 	const {
 		_renderer,
+        _samplesQuad,
 		_fsQuad,
 		_blendQuad,
 		_primaryTarget,
 		_blendTargets,
+        _samplesTarget,
 		_sobolTarget,
 		_subframe,
 		alpha,
 		material,
 	} = this;
-	const _ogViewport = new Vector4();
-
 	const blendMaterial = _blendQuad.material;
 	let [ blendTarget1, blendTarget2 ] = _blendTargets;
 
@@ -50,15 +50,18 @@ function* renderTask() {
         // store og state
         const ogRenderTarget = _renderer.getRenderTarget();
         const ogAutoClear = _renderer.autoClear;
-        _renderer.getViewport( _ogViewport );
+
+		/*
+        _renderer.setRenderTarget( _samplesTarget );
+        _renderer.autoClear = false;
+        _samplesQuad.render( _renderer );
+		*/
 
         _renderer.setRenderTarget( _primaryTarget );
-
         _renderer.autoClear = false;
         _fsQuad.render( _renderer );
 
         // reset original renderer state
-        _renderer.setViewport( _ogViewport );
         _renderer.setRenderTarget( ogRenderTarget );
         _renderer.autoClear = ogAutoClear;
 
@@ -153,7 +156,8 @@ export class RestirDiRenderer {
 		this._opacityFactor = 1.0;
 		this._renderer = renderer;
 		this._alpha = false;
-		this._fsQuad = new FullScreenQuad( new RestirDiMaterial() );
+		this._samplesQuad = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample ) );
+		this._fsQuad = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
 		this._blendQuad = new FullScreenQuad( new BlendMaterial() );
 		this._task = null;
 		this._currentTile = 0;
@@ -181,6 +185,7 @@ export class RestirDiRenderer {
 				minFilter: NearestFilter,
 			} ),
 		];
+        this._samplesTarget = new WebGLRenderTarget( 1, 1, { format: RGBAFormat, type: FloatType, count: 3 } )
 
 		// function for listening to for triggered compilation so we can wait for compilation to finish
 		// before starting to render
@@ -257,6 +262,7 @@ export class RestirDiRenderer {
 		this._primaryTarget.setSize( w, h );
 		this._blendTargets[ 0 ].setSize( w, h );
 		this._blendTargets[ 1 ].setSize( w, h );
+        this._samplesTarget.setSize( w, h );
 		this.reset();
 
 	}
@@ -283,7 +289,7 @@ export class RestirDiRenderer {
 
 	reset() {
 
-		const { _renderer, _primaryTarget, _blendTargets } = this;
+		const { _renderer, _primaryTarget, _blendTargets, _samplesTarget } = this;
 		const ogRenderTarget = _renderer.getRenderTarget();
 		const ogClearAlpha = _renderer.getClearAlpha();
 		_renderer.getClearColor( ogClearColor );
@@ -297,6 +303,11 @@ export class RestirDiRenderer {
 		_renderer.clearColor();
 
 		_renderer.setRenderTarget( _blendTargets[ 1 ] );
+		_renderer.setClearColor( 0, 0 );
+		_renderer.clearColor();
+
+        // TODO: verify if this works? do we need to do something different for mrt?
+		_renderer.setRenderTarget( _samplesTarget );
 		_renderer.setClearColor( 0, 0 );
 		_renderer.clearColor();
 

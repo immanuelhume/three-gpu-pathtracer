@@ -42,10 +42,11 @@ async function init() {
 	pathTracer.tiles.set( tiles, tiles );
 	pathTracer.setBVHWorker( new ParallelMeshBVHWorker() );
     pathTracer.dynamicLowRes = true;
+    pathTracer.lowResScale = 1.0;
 
 	// camera
-	camera = new PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.025, 500 );
-	camera.position.set( 0, 2, 10 );
+	camera = new PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.025, 500 );
+	camera.position.set( 0, 2, 16 );
     camera.lookAt( 0, 2, 0 );
 
 	controls = new OrbitControls( camera, renderer.domElement );
@@ -103,7 +104,7 @@ async function init() {
     const box1Geom = new THREE.BoxGeometry(1.2, 2.7);
     const box1Mat = new THREE.MeshPhysicalMaterial();
     const box1 = new THREE.Mesh(box1Geom, box1Mat);
-    box1.position.z = 1.3;
+    box1.position.z = 1.35;
     box1.position.y = 1;
     box1.position.x = -0.7;
     box1.rotateY(Math.PI/9);
@@ -122,8 +123,8 @@ async function init() {
     scene.add(right);
     scene.add(back);
 
-    scene.add(areaLight);
-    // scene.add(lightEmissiveTile);
+    // scene.add(areaLight);
+    scene.add(lightEmissiveTile);
 
     scene.add(box1);
     scene.add(box2);

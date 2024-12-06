@@ -73,6 +73,63 @@ function getLights( objects ) {
 
 }
 
+function getEmissiveTriangles( geometry, materials ) {
+
+	// Largely following src\core\utils\GeometryPreparationUtils.js.
+
+	const indexAttr = geometry.index;
+	const posAttr = geometry.attributes.position;
+	const vertCount = posAttr.count;
+	const totalCount = indexAttr ? indexAttr.count : vertCount;
+	let groups = geometry.groups;
+	if ( groups.length === 0 ) {
+
+		groups = [ { count: totalCount, start: 0, materialIndex: 0 } ];
+
+	}
+
+	const indices = [];
+
+	for (const group of groups) {
+
+		const mat = materials[ group.materialIndex ];
+		if ( mat.emissiveIntensity > 0.0 && mat.emissive.getHex() > 0 ) {
+			console.log( mat );
+
+			const endCount = Math.min( group.count, totalCount - group.count );
+
+			for ( let j = 0; j < endCount; ++j ) {
+
+				let index = group.start + j;
+				if ( indexAttr ) {
+
+					// This currently pushes all vertex indices up. I'm not sure
+					// if that is what I want. If every triangle has an index,
+					// we should use that instead.
+
+					index = indexAttr.getX( index );
+
+				}
+
+				indices.push( index );
+
+			}
+
+		}
+
+	}
+
+	console.log( indices );
+	console.log( indices.map( ( index ) => ( { 
+		x: posAttr.array[ 3*index ] ,
+		y: posAttr.array[ 3*index+1 ] ,
+		z: posAttr.array[ 3*index+2 ] ,
+	} ) ) );
+
+	return indices;
+
+}
+
 export class PathTracingSceneGenerator {
 
 	get initialized() {
@@ -203,6 +260,8 @@ export class PathTracingSceneGenerator {
 
 		}
 
+		const emissiveTriangles = getEmissiveTriangles( geometry, materials );
+
 		// only generate a new bvh if the objects used have changed
 		if ( this.generateBVH ) {
 
@@ -245,6 +304,7 @@ export class PathTracingSceneGenerator {
 			bvh: this.bvh,
 			needsMaterialIndexUpdate,
 			lights,
+			emissiveTriangles,
 			iesTextures,
 			geometry,
 			materials,
