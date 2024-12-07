@@ -103,17 +103,19 @@ export class WebGLPathTracer {
 
 	constructor( renderer ) {
 
+		// CONTINUE: investigate dark banding
+
 		// members
 		this._renderer = renderer;
 		this._generator = new PathTracingSceneGenerator();
-		// this._pathTracer = new PathTracingRenderer( renderer );
 		this._pathTracer = new RestirDiRenderer( renderer );
+		// this._pathTracer = new PathTracingRenderer( renderer );
 		this._queueReset = false;
 		this._clock = new Clock();
 		this._compilePromise = null;
 
-		// this._lowResPathTracer = new PathTracingRenderer( renderer );
 		this._lowResPathTracer = new RestirDiRenderer( renderer );
+		// this._lowResPathTracer = new PathTracingRenderer( renderer );
 		this._lowResPathTracer.tiles.set( 1, 1 );
 		this._quad = new FullScreenQuad( new ClampedInterpolationMaterial( {
 			map: null,

@@ -96,9 +96,7 @@ function getEmissiveTriangles( geometry, materials ) {
 		if ( mat.emissiveIntensity > 0.0 && mat.emissive.getHex() > 0 ) {
 			console.log( mat );
 
-			const endCount = Math.min( group.count, totalCount - group.count );
-
-			for ( let j = 0; j < endCount; ++j ) {
+			for ( let j = 0; j < group.count; ++j ) {
 
 				let index = group.start + j;
 				if ( indexAttr ) {
@@ -126,7 +124,7 @@ function getEmissiveTriangles( geometry, materials ) {
 		z: posAttr.array[ 3*index+2 ] ,
 	} ) ) );
 
-	return indices;
+	return indices
 
 }
 

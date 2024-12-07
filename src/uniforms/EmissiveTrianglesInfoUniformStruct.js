@@ -87,7 +87,7 @@ export class EmissiveTrianglesInfoUniformStruct {
 		}
 		*/
 
-		this.count = indices.length;
+		this.count = indices.length / 3;
 
 		const hash = bufferToHash( data.buffer );
 		if ( this.hash !== hash ) {

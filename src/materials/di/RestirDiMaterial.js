@@ -237,6 +237,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				#if RESTIR_PASS == PASS_GEN_SAMPLE
 
+				// CONTINUE: park the sample here
+
 				#endif
 
 				// TODO: generate sample
@@ -253,14 +255,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hitType == SURFACE_HIT ) {
 
-					// TODO: does not accomodate transmission
-					vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-					samp.path[1] = hitPoint;
-
-					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles );
-					float lightDist = length( emTri.barycoord - hitPoint );
-					vec3 lightDir = normalize( emTri.barycoord - hitPoint );
-
 					SurfaceRecord surf;
 					{
 
@@ -271,20 +265,27 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						if ( surfRecord == SKIP_SURFACE ) {
 
 							// TODO: what's the semantics of skipping a surface even
-							fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
+							fragColor = vec4( surf.emission, 1.0 );
 							return;
 
 						}
 
 					}
 
+					// TODO: does not accomodate transmission
+					vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
+					samp.path[1] = hitPoint;
+
+					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles );
+					float lightDist = length( emTri.barycoord - hitPoint );
+					vec3 lightDir = normalize( emTri.barycoord - hitPoint );
 
 					// Light is behind the surface
 					//
 					// TODO: this does not support transmission...
 					if ( dot( lightDir, surf.normal ) < 0.0 ) {
 
-						fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
+						fragColor = vec4( surf.emission, 1.0 );
 						return;
 
 					}
@@ -295,37 +296,47 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						SurfaceHit lightHit;
 						int hitType = traceScene( shadowRay, lightHit );
 
-						if ( hitType == SURFACE_HIT && lightHit.dist < lightDist - 0.001 ) {
+						if ( hitType == SURFACE_HIT ) {
 
-							// Light is blocked
+							if ( lightHit.dist < lightDist - 0.001 ) {
 
-						} else {
-							
-							Material lightMaterial;
-							{
-								uint materialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
-								lightMaterial = readMaterialInfo( materials, materialIndex );
-							}
-							vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
-
-							float lightPdf = 1.0 / float( emissiveTriangles.count ) / emTri.tri.area;
-
-							samp.path[2] = emTri.barycoord;
-							samp.weight = 1.0 / lightPdf;
-
-							vec3 sampleColor;
-							float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
-
-							// TODO: geometry term?
-							if ( materialPdf > 0.0 ) {
-
-								fragColor = vec4( emission * sampleColor * samp.weight / lightDist / lightDist, 1.0 );
+								// Light is blocked
+								fragColor = vec4( surf.emission, 1.0 );
 
 							} else {
 
-								fragColor = vec4( surf.emission, 1.0 );
+								Material lightMaterial;
+								{
+									uint materialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+									lightMaterial = readMaterialInfo( materials, materialIndex );
+								}
+								vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+								float lightPdf = 1.0 / float( emissiveTriangles.count ) / emTri.tri.area;
+
+								samp.path[2] = emTri.barycoord;
+								samp.weight = 1.0 / lightPdf;
+
+								vec3 sampleColor;
+								float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
+
+								if ( materialPdf > 0.0 ) {
+
+									float g = 1.0 / ( lightDist * lightDist );
+
+									fragColor = vec4( surf.emission + emission * sampleColor * samp.weight * g, 1.0 );
+
+								} else {
+
+									fragColor = vec4( surf.emission, 1.0 );
+
+								}
 
 							}
+
+						} else {
+
+							fragColor = vec4( surf.emission, 1.0 );
 
 						}
 
@@ -334,50 +345,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						fragColor = vec4( surf.emission, 1.0 );
 
 					}
-
-					/*
-					LightRecord lightRec = randomLightSample( lights.tex, iesProfiles, lights.count, hitPoint, rand3( 6 ) );
-
-					SurfaceRecord surf;
-					int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
-					if ( surfRecord == SKIP_SURFACE ) {
-
-						// TODO: what's the semantics of skipping a surface even
-						return;
-
-					}
-
-					if ( lightRec.pdf > 0.0 && isDirectionValid( lightRec.direction, surf.normal, surf.faceNormal ) ) {
-						Ray shadowRay = Ray( hitPoint, lightRec.direction );
-						SurfaceHit surfaceHit;
-						int hitType = traceScene( shadowRay, surfaceHit );
-
-						if ( hitType == SURFACE_HIT && surfaceHit.dist < lightRec.dist ) {
-
-							// Light is blocked
-
-						} else {
-
-							// Light is not blocked
-							vec3 pointOnLight = hitPoint + lightRec.dist * lightRec.direction;
-							float lightPdf = lightRec.pdf / lightsDenom;
-
-							samp.path[2] = pointOnLight;
-							samp.weight = 1.0 / lightPdf;
-
-							vec3 sampleColor;
-							float lightMaterialPdf = bsdfResult( -ray.direction, lightRec.direction, surf, sampleColor );
-
-							if ( lightMaterialPdf > 0.0 ) {
-
-								fragColor = vec4( lightRec.emission * sampleColor * samp.weight, 1.0 );
-
-							}
-
-						}
-
-					}
-					*/
 
 				} else {
 				

@@ -186,7 +186,6 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 				${ StructsGLSL.equirect_struct }
 				${ StructsGLSL.material_struct }
 				${ StructsGLSL.surface_record_struct }
-				${ StructsGLSL.emissive_triangles_struct }
 
 				// common
 				${ CommonGLSL.texture_sample_functions }
@@ -203,7 +202,6 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 				// lighting
 				uniform sampler2DArray iesProfiles;
 				uniform LightsInfo lights;
-				uniform EmissiveTrianglesInfo emissiveTriangles;
 
 				// background
 				uniform float backgroundBlur;
