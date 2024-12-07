@@ -50,7 +50,7 @@ export const emissive_triangles_struct = /* glsl */`
 
     EmissiveTriangle randomEmissiveTriangle( EmissiveTrianglesInfo info ) {
 
-        float r = rand( 9 );
+        float r = rand( 16 );
         uint nTriangles = info.count;
         uint index = min( nTriangles - 1u, uint( r * float( nTriangles ) ) );
 

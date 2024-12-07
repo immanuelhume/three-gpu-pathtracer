@@ -312,13 +312,15 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 								}
 								vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
 
-								float lightPdf = 1.0 / float( emissiveTriangles.count ) / emTri.tri.area;
+								// TODO: this is wrong ... the pdf is negative...
+								float lightPdf = 1.0 / ( emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ) );
 
 								samp.path[2] = emTri.barycoord;
 								samp.weight = 1.0 / lightPdf;
 
 								vec3 sampleColor;
 								float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
+								float g = 1.0 / ( lightDist * lightDist );
 
 								if ( materialPdf > 0.0 ) {
 
