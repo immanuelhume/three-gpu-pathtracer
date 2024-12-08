@@ -197,23 +197,15 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
-			// vec3 x0 [out0.xyz]
-			// vec3 x1 [out0.w, out1.xy]
-			// vec3 x2 [out1.zw, out2.x]
-			// float weight [out2.y]
-			// float ok [out2.z] (-ve means no sample was selected, e.g. primary ray hit nothing)
+			// vec4 x0, ()
+			// vec4 x1, material index
+			// vec4 x2, material index
+			// vec4 ok, weight, (), ()
 
-			layout(location = 0) out vec4 out0;
-			layout(location = 1) out vec4 out1;
-			layout(location = 2) out vec4 out2;
-
-			void gsSetHasSample() {
-				out2.z = 1.0;
-			}
-
-			void gsSetNoSample() {
-				out2.z = -1.0;
-			}
+			layout(location = 0) out vec4 pathX0;
+			layout(location = 1) out vec4 pathX1;
+			layout(location = 2) out vec4 pathX2;
+			layout(location = 2) out vec4 pathInfo;
 
 			#endif
 
@@ -232,9 +224,38 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				#if RESTIR_PASS == PASS_GEN_SAMPLE
 
-				#endif
+				Ray ray = getCameraRay();
 
-				// TODO: generate sample
+				SurfaceHit surfaceHit;
+				int hitType = traceScene( ray, surfaceHit );
+
+				if ( hitType != SURFACE_HIT ) {
+
+					pathInfo.x = -1.0;
+					return;
+					
+				}
+				
+				pathInfo.x = 1.0;
+
+				vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
+				uint hitPointMaterialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+
+				EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles );
+				uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+
+				vec3 lightDir = normalize( emTri.barycoord - hitPoint );
+
+				float weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // weight=1/pdf
+
+				pathX0.xyz = ray.origin;
+				pathX1.xyz = hitPoint;
+				pathX1.w = float( hitPointMaterialIndex );
+				pathX2.xyz = emTri.barycoord;
+				pathX2.w = float( emTriMaterialIndex );
+				pathInfo.y = weight;
+
+				#endif
 
 				#if RESTIR_PASS == PASS_SHADE_PIXEL
 
@@ -306,11 +327,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 								}
 								vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
 
-								// TODO: this is wrong ... the pdf is negative...
-								float lightPdf = 1.0 / ( emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ) );
-
 								samp.path[2] = emTri.barycoord;
-								samp.weight = 1.0 / lightPdf;
+								samp.weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // 1/pdf
 
 								vec3 sampleColor;
 								float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );

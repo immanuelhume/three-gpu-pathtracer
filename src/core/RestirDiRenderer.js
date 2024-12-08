@@ -185,7 +185,7 @@ export class RestirDiRenderer {
 				minFilter: NearestFilter,
 			} ),
 		];
-        this._samplesTarget = new WebGLRenderTarget( 1, 1, { format: RGBAFormat, type: FloatType, count: 3 } )
+        this._samplesTarget = new WebGLRenderTarget( 1, 1, { format: RGBAFormat, type: FloatType, count: 4 } )
 
 		// function for listening to for triggered compilation so we can wait for compilation to finish
 		// before starting to render
