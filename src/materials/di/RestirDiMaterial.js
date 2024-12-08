@@ -34,7 +34,7 @@ export const Pass = {
 
 export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
-    constructor( pass, parameters ) {
+    constructor( parameters ) {
 
         const fragmentShader = /* glsl */`
 			#define RAY_OFFSET 1e-4
@@ -184,6 +184,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			// restir
 
+			uniform int restir_pass;
+
 			${ StructsGLSL.emissive_triangles_struct }
 
 			uniform EmissiveTrianglesInfo emissiveTriangles;
@@ -195,25 +197,25 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			};
 
-			#if RESTIR_PASS == PASS_GEN_SAMPLE
+			// #if RESTIR_PASS == PASS_GEN_SAMPLE
 
 			// vec4 x0, ()
 			// vec4 x1, material index
 			// vec4 x2, material index
 			// vec4 ok, weight, (), ()
 
-			layout(location = 0) out vec4 pathX0;
+			layout(location = 0) out vec4 fragColor; // doubles as pathX0
 			layout(location = 1) out vec4 pathX1;
 			layout(location = 2) out vec4 pathX2;
-			layout(location = 2) out vec4 pathInfo;
+			layout(location = 3) out vec4 pathInfo;
 
-			#endif
+			// #endif
 
-			#if RESTIR_PASS == PASS_SHADE_PIXEL
+			// #if RESTIR_PASS == PASS_SHADE_PIXEL
 
-			layout(location = 0) out vec4 fragColor;
+			// layout(location = 0) out vec4 fragColor;
 
-			#endif
+			// #endif
 
 			void main() {
 
@@ -222,7 +224,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				sobolPixelIndex = ( uint( gl_FragCoord.x ) << 16 ) | uint( gl_FragCoord.y );
 				sobolPathIndex = uint( seed );
 
-				#if RESTIR_PASS == PASS_GEN_SAMPLE
+				if ( restir_pass == PASS_GEN_SAMPLE ) {
+
+				/////////////////////
+				// GENERATE SAMPLE //
+				/////////////////////
 
 				Ray ray = getCameraRay();
 
@@ -248,16 +254,18 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				float weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // weight=1/pdf
 
-				pathX0.xyz = ray.origin;
+				fragColor.xyz = ray.origin;
 				pathX1.xyz = hitPoint;
 				pathX1.w = float( hitPointMaterialIndex );
 				pathX2.xyz = emTri.barycoord;
 				pathX2.w = float( emTriMaterialIndex );
 				pathInfo.y = weight;
 
-				#endif
+				} else if ( restir_pass == PASS_SHADE_PIXEL ) {
 
-				#if RESTIR_PASS == PASS_SHADE_PIXEL
+				/////////////////
+				// SHADE POINT //
+				/////////////////
 
 				Ray ray = getCameraRay();
 
@@ -374,7 +382,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				
 				}
 
-				#endif
+				}
 
 			}
 		`;
@@ -387,10 +395,16 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 		this.defines["PASS_GEN_SAMPLE"] = Pass.GenSample;
 		this.defines["PASS_SHADE_PIXEL"] = Pass.ShadePixel;
 
-		this.defines["RESTIR_PASS"] = pass;
+		// this.defines["RESTIR_PASS"] = pass;
 
         this.setValues( parameters );
 
     }
+
+	setPass( pass ) {
+
+		this.uniforms["restir_pass"] = { value: pass };
+
+	}
 
 }

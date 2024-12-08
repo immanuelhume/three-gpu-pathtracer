@@ -8,7 +8,6 @@ function* renderTask() {
 
 	const {
 		_renderer,
-        _samplesQuad,
 		_fsQuad,
 		_blendQuad,
 		_primaryTarget,
@@ -51,12 +50,12 @@ function* renderTask() {
         const ogRenderTarget = _renderer.getRenderTarget();
         const ogAutoClear = _renderer.autoClear;
 
-		/*
+		_fsQuad.material.setPass( Pass.GenSample );
         _renderer.setRenderTarget( _samplesTarget );
         _renderer.autoClear = false;
-        _samplesQuad.render( _renderer );
-		*/
+        _fsQuad.render( _renderer );
 
+		_fsQuad.material.setPass( Pass.ShadePixel );
         _renderer.setRenderTarget( _primaryTarget );
         _renderer.autoClear = false;
         _fsQuad.render( _renderer );
@@ -156,8 +155,8 @@ export class RestirDiRenderer {
 		this._opacityFactor = 1.0;
 		this._renderer = renderer;
 		this._alpha = false;
-		this._samplesQuad = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample ) );
-		this._fsQuad = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
+		// this._samplesQuad = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample ) );
+		this._fsQuad = new FullScreenQuad( new RestirDiMaterial() );
 		this._blendQuad = new FullScreenQuad( new BlendMaterial() );
 		this._task = null;
 		this._currentTile = 0;
