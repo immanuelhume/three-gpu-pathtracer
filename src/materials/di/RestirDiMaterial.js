@@ -230,14 +230,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				sobolPixelIndex = ( uint( gl_FragCoord.x ) << 16 ) | uint( gl_FragCoord.y );
 				sobolPathIndex = uint( seed );
 
-				lightsDenom =
-					( environmentIntensity == 0.0 || envMapInfo.totalSum == 0.0 ) && lights.count != 0u ?
-						float( lights.count ) :
-						float( lights.count + 1u );
-
 				#if RESTIR_PASS == PASS_GEN_SAMPLE
-
-				// CONTINUE: park the sample here
 
 				#endif
 
@@ -280,10 +273,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					float lightDist = length( emTri.barycoord - hitPoint );
 					vec3 lightDir = normalize( emTri.barycoord - hitPoint );
 
-					// Light is behind the surface
-					//
-					// TODO: this does not support transmission...
 					if ( dot( lightDir, surf.normal ) < 0.0 ) {
+
+						// Light is behind the surface
+						//
+						// TODO: this does not support transmission...
 
 						fragColor = vec4( surf.emission, 1.0 );
 						return;
@@ -330,6 +324,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 								} else {
 
+									// This branch should not occur - it probably means the light is beneath the surface, which we have already checked for.
+
 									fragColor = vec4( surf.emission, 1.0 );
 
 								}
@@ -338,17 +334,23 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 						} else {
 
+							// Sampled light is obstructed from hit point.
+
 							fragColor = vec4( surf.emission, 1.0 );
 
 						}
 
 					} else {
 
+						// Sampled light does not face the hit point (only one side of a triangle is emissive).
+
 						fragColor = vec4( surf.emission, 1.0 );
 
 					}
 
 				} else {
+
+					// Primary ray missed.
 				
 					fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
 				

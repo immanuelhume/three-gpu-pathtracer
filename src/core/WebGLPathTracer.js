@@ -103,8 +103,6 @@ export class WebGLPathTracer {
 
 	constructor( renderer ) {
 
-		// CONTINUE: investigate dark banding
-
 		// members
 		this._renderer = renderer;
 		this._generator = new PathTracingSceneGenerator();
