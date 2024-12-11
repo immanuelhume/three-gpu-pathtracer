@@ -1,4 +1,4 @@
-import { ClampToEdgeWrapping, HalfFloatType, Matrix4, Vector2 } from 'three';
+import { ClampToEdgeWrapping, HalfFloatType, Matrix4, Vector2, NoBlending } from 'three';
 import { MaterialBase } from '../MaterialBase.js';
 import {
 	MeshBVHUniformStruct, UIntVertexAttributeTexture,
@@ -101,7 +101,7 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 				environmentIntensity: { value: 1.0 },
 				environmentRotation: { value: new Matrix4() },
 				envMapInfo: { value: new EquirectHdrInfoUniform() },
-				emissiveTriangles: { value: new EmissiveTrianglesInfoUniformStruct() },
+				emissiveTriangles: { value: new EmissiveTrianglesInfoUniformStruct() }, // unused
 
 				// background uniforms
 				backgroundBlur: { value: 0.0 },

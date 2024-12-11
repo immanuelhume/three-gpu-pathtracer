@@ -94,7 +94,6 @@ function getEmissiveTriangles( geometry, materials ) {
 
 		const mat = materials[ group.materialIndex ];
 		if ( mat.emissiveIntensity > 0.0 && mat.emissive.getHex() > 0 ) {
-			console.log( mat );
 
 			for ( let j = 0; j < group.count; ++j ) {
 

@@ -160,6 +160,12 @@ export class WebGLPathTracer {
 
 }
 
+export class RestirPathTracer {
+
+	constructor( renderer: WebGLRenderer );
+
+}
+
 // objects
 
 export class PhysicalCamera extends PerspectiveCamera {

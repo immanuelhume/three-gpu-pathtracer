@@ -2,7 +2,7 @@ import { RGBAFormat, FloatType, Color, Vector2, WebGLRenderTarget, NoBlending, N
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { BlendMaterial } from '../materials/fullscreen/BlendMaterial.js';
 import { SobolNumberMapGenerator } from '../utils/SobolNumberMapGenerator.js';
-import { RestirDiMaterial, Pass } from '../materials/di/RestirDiMaterial.js';
+import { RestirDiMaterial, Pass, SimpleMaterial } from '../materials/di/RestirDiMaterial.js';
 
 function* renderTask() {
 
@@ -10,9 +10,12 @@ function* renderTask() {
 		_renderer,
 		_fsQuad,
 		_blendQuad,
+		_samplesQuad,
+		_simpleQuad,
 		_primaryTarget,
 		_blendTargets,
         _samplesTarget,
+		_simpleTarget,
 		_sobolTarget,
 		_subframe,
 		alpha,
@@ -26,13 +29,16 @@ function* renderTask() {
 		if ( alpha ) {
 
 			blendMaterial.opacity = this._opacityFactor / ( this.samples + 1 );
-			material.blending = NoBlending;
-			material.opacity = 1;
+			_fsQuad.material.blending = NoBlending;
+			_samplesQuad.material.opacity = 1;
 
 		} else {
 
-			material.opacity = this._opacityFactor / ( this.samples + 1 );
-			material.blending = NormalBlending;
+			_fsQuad.material.opacity = this._opacityFactor / ( this.samples + 1 );
+			_fsQuad.material.blending = NormalBlending;
+
+			_samplesQuad.material.opacity = this._opacityFactor / ( this.samples + 1 );
+			_samplesQuad.material.blending = NormalBlending;
 
 		}
 
@@ -40,22 +46,35 @@ function* renderTask() {
 
 		const w = _primaryTarget.width;
 		const h = _primaryTarget.height;
-		material.resolution.set( w * subW, h * subH );
-		material.sobolTexture = _sobolTarget.texture;
-		material.stratifiedTexture.init( 20, material.bounces + material.transmissiveBounces + 5 );
-		material.stratifiedTexture.next();
-		material.seed ++;
+		_fsQuad.material.resolution.set( w * subW, h * subH );
+		_fsQuad.material.sobolTexture = _sobolTarget.texture;
+		_fsQuad.material.stratifiedTexture.init( 20, material.bounces + material.transmissiveBounces + 5 );
+		_fsQuad.material.stratifiedTexture.next();
+		_fsQuad.material.seed ++;
+
+		// _samplesQuad.material.resolution.set( w * subW, h * subH );
+		// _samplesQuad.material.sobolTexture = _sobolTarget.texture;
+		// _samplesQuad.material.stratifiedTexture.init( 20, material.bounces + material.transmissiveBounces + 5 );
+		// _samplesQuad.material.stratifiedTexture.next();
+		// _samplesQuad.material.seed ++;
 
         // store og state
         const ogRenderTarget = _renderer.getRenderTarget();
         const ogAutoClear = _renderer.autoClear;
 
-		_fsQuad.material.setPass( Pass.GenSample );
+		// const program1 = _renderer.info.programs[ 1 ];
+		// console.log( program1.getUniforms() );
+		// const program2 = _renderer.info.programs[ 2 ];
+		// console.log( program2.getUniforms() );
+
+		_renderer.setRenderTarget( _simpleTarget );
+		_renderer.autoClear = false;
+		_simpleQuad.render( _renderer );
+
         _renderer.setRenderTarget( _samplesTarget );
         _renderer.autoClear = false;
-        _fsQuad.render( _renderer );
+        _samplesQuad.render( _renderer );
 
-		_fsQuad.material.setPass( Pass.ShadePixel );
         _renderer.setRenderTarget( _primaryTarget );
         _renderer.autoClear = false;
         _fsQuad.render( _renderer );
@@ -155,8 +174,9 @@ export class RestirDiRenderer {
 		this._opacityFactor = 1.0;
 		this._renderer = renderer;
 		this._alpha = false;
-		// this._samplesQuad = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample ) );
-		this._fsQuad = new FullScreenQuad( new RestirDiMaterial() );
+		this._samplesQuad = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample ) );
+		this._fsQuad = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
+		this._simpleQuad = new FullScreenQuad( new SimpleMaterial() );
 		this._blendQuad = new FullScreenQuad( new BlendMaterial() );
 		this._task = null;
 		this._currentTile = 0;
@@ -184,13 +204,43 @@ export class RestirDiRenderer {
 				minFilter: NearestFilter,
 			} ),
 		];
-        this._samplesTarget = new WebGLRenderTarget( 1, 1, { format: RGBAFormat, type: FloatType, count: 4 } )
+		this._simpleTarget = new WebGLRenderTarget( 1, 1, {
+			format: RGBAFormat,
+			type: FloatType,
+			magFilter: NearestFilter,
+			minFilter: NearestFilter,
+			count: 2,
+		} );
+        this._samplesTarget = new WebGLRenderTarget( 1, 1, {
+			format: RGBAFormat,
+			type: FloatType,
+			// internalFormat: "RGBA32F",
+			depthBuffer: false,
+			magFilter: NearestFilter,
+			minFilter: NearestFilter,
+			count: 4,
+		} )
+
+		// Copy references to each uniform.
+		this._dummyMaterial = new RestirDiMaterial( Pass.Dummy );
+		const sharedUniforms = this._dummyMaterial.uniforms;
+		this._samplesQuad.material.uniforms = { ...sharedUniforms };
+		this._fsQuad.material.uniforms = { ...sharedUniforms,
+
+			pathX0: { value: this._samplesTarget.textures[0] },
+			pathX1: { value: this._samplesTarget.textures[1] },
+			pathX2: { value: this._samplesTarget.textures[2] },
+			pathInfo: { value: this._samplesTarget.textures[3] },
+
+		};
+
+		// this._samplesQuad.material.uniforms["owo"] = { value: this._samplesTarget.textures[0] };
 
 		// function for listening to for triggered compilation so we can wait for compilation to finish
 		// before starting to render
 		this._compileFunction = () => {
 
-			const promise = this.compileMaterial( this._fsQuad._mesh );
+			const promise = this.compileMaterial();
 			promise.then( () => {
 
 				if ( this._compilePromise === promise ) {
@@ -205,13 +255,15 @@ export class RestirDiRenderer {
 
 		};
 
-		this.material.addEventListener( 'recompilation', this._compileFunction );
+		this._fsQuad.material.addEventListener( 'recompilation', this._compileFunction );
+		this._samplesQuad.material.addEventListener( 'recompilation', this._compileFunction );
 
 	}
 
-	compileMaterial() {
+	async compileMaterial() {
 
-		return this._renderer.compileAsync( this._fsQuad._mesh );
+		await this._renderer.compileAsync( this._fsQuad._mesh );
+		return this._renderer.compileAsync( this._samplesQuad._mesh );
 
 	}
 
@@ -241,7 +293,8 @@ export class RestirDiRenderer {
 
 		}
 
-		material.setDefine( 'CAMERA_TYPE', cameraType );
+		this._fsQuad.material.setDefine( 'CAMERA_TYPE', cameraType );
+		this._samplesQuad.material.setDefine( 'CAMERA_TYPE', cameraType );
 
 		this.camera = camera;
 
@@ -262,6 +315,7 @@ export class RestirDiRenderer {
 		this._blendTargets[ 0 ].setSize( w, h );
 		this._blendTargets[ 1 ].setSize( w, h );
         this._samplesTarget.setSize( w, h );
+		this._simpleTarget.setSize( w, h );
 		this.reset();
 
 	}
@@ -316,11 +370,11 @@ export class RestirDiRenderer {
 		this.samples = 0;
 		this._task = null;
 
-		this.material.stratifiedTexture.stableNoise = this.stableNoise;
+		this._dummyMaterial.stratifiedTexture.stableNoise = this.stableNoise;
 		if ( this.stableNoise ) {
 
-			this.material.seed = 0;
-			this.material.stratifiedTexture.reset();
+			this._dummyMaterial.seed = 0;
+			this._dummyMaterial.stratifiedTexture.reset();
 
 		}
 
@@ -330,7 +384,8 @@ export class RestirDiRenderer {
 
 		// ensure we've updated our defines before rendering so we can ensure we
 		// can wait for compilation to finish
-		this.material.onBeforeRender();
+		this._samplesQuad.material.onBeforeRender();
+		this._fsQuad.material.onBeforeRender();
 		if ( this.isCompiling ) {
 
 			return;

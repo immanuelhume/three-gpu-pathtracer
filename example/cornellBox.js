@@ -15,11 +15,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ParallelMeshBVHWorker } from 'three-mesh-bvh/src/workers/ParallelMeshBVHWorker.js';
 import { getScaledSettings } from './utils/getScaledSettings.js';
 import { LoaderElement } from './utils/LoaderElement.js';
-import { ShapedAreaLight, WebGLPathTracer } from '..';
+import { ShapedAreaLight, WebGLPathTracer, RestirPathTracer } from '..';
 
 let pathTracer, renderer, controls;
 let camera, scene;
 let loader;
+let box1, box2;
 
 init();
 
@@ -36,13 +37,16 @@ async function init() {
 	document.body.appendChild( renderer.domElement );
 
 	// path tracer
-	pathTracer = new WebGLPathTracer( renderer );
-	pathTracer.filterGlossyFactor = 0.5;
-	pathTracer.renderScale = renderScale;
-	pathTracer.tiles.set( tiles, tiles );
-	pathTracer.setBVHWorker( new ParallelMeshBVHWorker() );
-    pathTracer.dynamicLowRes = true;
-    pathTracer.lowResScale = 1.0;
+	// pathTracer = new WebGLPathTracer( renderer );
+	// pathTracer.filterGlossyFactor = 0.5;
+	// pathTracer.renderScale = renderScale;
+	// pathTracer.tiles.set( tiles, tiles );
+	// pathTracer.setBVHWorker( new ParallelMeshBVHWorker() );
+    // pathTracer.dynamicLowRes = true;
+    // pathTracer.lowResScale = 1.0;
+
+    pathTracer = new RestirPathTracer( renderer );
+    pathTracer.setBVHWorker( new ParallelMeshBVHWorker() );
 
 	// camera
 	camera = new PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.025, 500 );
@@ -103,7 +107,7 @@ async function init() {
 
     const box1Geom = new THREE.BoxGeometry(1.2, 2.5);
     const box1Mat = new THREE.MeshPhysicalMaterial();
-    const box1 = new THREE.Mesh(box1Geom, box1Mat);
+    box1 = new THREE.Mesh(box1Geom, box1Mat);
     box1.position.z = 1.3;
     box1.position.y = 1.25;
     box1.position.x = -0.7;
@@ -113,7 +117,7 @@ async function init() {
     const box2Geom = new THREE.SphereGeometry(0.6);
     // const box2Geom = new THREE.CylinderGeometry(0.6, 0.6, 1.2);
     const box2Mat = new THREE.MeshPhysicalMaterial({ emissive: 0x88ffff, emissiveIntensity: 1.0 });
-    const box2 = new THREE.Mesh(box2Geom, box2Mat);
+    box2 = new THREE.Mesh(box2Geom, box2Mat);
     box2.position.z = 2.5;
     box2.position.y = 0.6;
     box2.position.x = 0.7;
@@ -136,11 +140,14 @@ async function init() {
     // scene.add(box1);
     scene.add(box2);
 
-    await pathTracer.setSceneAsync(scene, camera, {
-        onProgress: v => {
-            loader.setPercentage(v);
-        }
-    });
+    pathTracer.setScene( scene, camera );
+
+    loader.setPercentage( 100 );
+    // await pathTracer.setSceneAsync(scene, camera, {
+    //     onProgress: v => {
+    //         loader.setPercentage(v);
+    //     }
+    // });
 
 	onResize();
 	window.addEventListener( 'resize', onResize );
@@ -160,7 +167,8 @@ function onResize() {
 
 renderer.setAnimationLoop(animate);
 function animate() {
-    // renderer.render(scene, camera);
+
     pathTracer.renderSample();
-	loader.setSamples( pathTracer.samples, pathTracer.isCompiling );
+	loader.setSamples( pathTracer.nSamples, false );
+
 }

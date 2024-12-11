@@ -1,4 +1,4 @@
-import { ClampToEdgeWrapping, HalfFloatType, Matrix4, Vector2, GLSL3 } from 'three';
+import { ClampToEdgeWrapping, HalfFloatType, Matrix4, Vector2, GLSL3, ShaderMaterial } from 'three';
 import { MaterialBase } from '../MaterialBase.js';
 import {
 	MeshBVHUniformStruct, UIntVertexAttributeTexture,
@@ -30,11 +30,114 @@ import { PhysicalPathTracingMaterial } from '../pathtracing/PhysicalPathTracingM
 export const Pass = {
 	"GenSample": 0,
 	"ShadePixel": 1,
+	"Dummy": -1,
+}
+
+export class AverageSamplesMaterial extends ShaderMaterial {
+
+	constructor() {
+
+		super( {
+
+			uniforms: {
+
+				curr: { value: null },
+				newSample: { value: null },
+				nSamples: { value: 0 },
+
+			},
+			
+			vertexShader: /* glsl */`
+
+				varying vec2 vUv;
+				void main() {
+
+					vUv = uv;
+					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+				}
+
+			`,
+
+			fragmentShader: /* glsl */`
+
+				uniform sampler2D curr;
+				uniform sampler2D newSample;
+				uniform uint nSamples; // no. of samples in [curr]
+
+				varying vec2 vUv;
+
+				void main() {
+
+					vec4 color = texelFetch( curr, ivec2( gl_FragCoord.xy ), 0 );
+
+					if ( nSamples == 0u ) {
+
+						gl_FragColor = color;
+
+					} else {
+
+						gl_FragColor = ( color * float( nSamples ) + texture2D( newSample, vUv ) ) / float( nSamples + 1u );
+
+					}
+
+				}
+
+			`,
+
+		} );
+
+	}
+
+}
+
+/* For testing */
+export class SimpleMaterial extends ShaderMaterial {
+
+	constructor() {
+
+		super( {
+
+			vertexShader: /* glsl */`
+
+				varying vec2 vUv;
+				void main() {
+
+					vec4 mvPosition = vec4( position, 1.0 );
+					mvPosition = modelViewMatrix * mvPosition;
+					gl_Position = projectionMatrix * mvPosition;
+
+					vUv = uv;
+
+				}
+
+			`,
+
+			fragmentShader: /* glsl */`
+
+				layout(location = 0) out vec4 fragColor;
+				// layout(location = 1) out vec4 fragColor2;
+
+				void main() {
+
+					fragColor = vec4( 0.0, 1.0, 0.0, 1.0 );
+					// fragColor2 = vec4( 0.0, 1.0, 0.0, 1.0 );
+
+				}
+
+			`,
+
+		} );
+
+		this.glslVersion = GLSL3;
+
+	}
+
 }
 
 export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
-    constructor( parameters ) {
+    constructor( pass, parameters ) {
 
         const fragmentShader = /* glsl */`
 			#define RAY_OFFSET 1e-4
@@ -184,8 +287,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			// restir
 
-			uniform int restir_pass;
-
 			${ StructsGLSL.emissive_triangles_struct }
 
 			uniform EmissiveTrianglesInfo emissiveTriangles;
@@ -197,25 +298,30 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			};
 
-			// #if RESTIR_PASS == PASS_GEN_SAMPLE
+			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
 			// vec4 x0, ()
 			// vec4 x1, material index
 			// vec4 x2, material index
 			// vec4 ok, weight, (), ()
 
-			layout(location = 0) out vec4 fragColor; // doubles as pathX0
+			layout(location = 0) out vec4 pathX0;
 			layout(location = 1) out vec4 pathX1;
 			layout(location = 2) out vec4 pathX2;
 			layout(location = 3) out vec4 pathInfo;
 
-			// #endif
+			#endif
 
-			// #if RESTIR_PASS == PASS_SHADE_PIXEL
+			#if RESTIR_PASS == PASS_SHADE_PIXEL
 
-			// layout(location = 0) out vec4 fragColor;
+			layout(location = 0) out vec4 fragColor;
 
-			// #endif
+			uniform sampler2D pathX0;
+			uniform sampler2D pathX1;
+			uniform sampler2D pathX2;
+			uniform sampler2D pathInfo;
+
+			#endif
 
 			void main() {
 
@@ -224,7 +330,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				sobolPixelIndex = ( uint( gl_FragCoord.x ) << 16 ) | uint( gl_FragCoord.y );
 				sobolPathIndex = uint( seed );
 
-				if ( restir_pass == PASS_GEN_SAMPLE ) {
+				#if RESTIR_PASS == PASS_GEN_SAMPLE
 
 				/////////////////////
 				// GENERATE SAMPLE //
@@ -234,6 +340,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				SurfaceHit surfaceHit;
 				int hitType = traceScene( ray, surfaceHit );
+
+				pathX0 = vec4( 0.0, 0.0, 0.0, 1.0 );
+				pathX1 = vec4( 0.0, 0.0, 0.0, 1.0 );
+				pathX2 = vec4( 0.0, 0.0, 0.0, 1.0 );
+				pathInfo = vec4( 0.0, 0.0, 0.0, 1.0 );
 
 				if ( hitType != SURFACE_HIT ) {
 
@@ -254,20 +365,26 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				float weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // weight=1/pdf
 
-				fragColor.xyz = ray.origin;
+				pathX0.xyz = ray.origin;
 				pathX1.xyz = hitPoint;
 				pathX1.w = float( hitPointMaterialIndex );
 				pathX2.xyz = emTri.barycoord;
 				pathX2.w = float( emTriMaterialIndex );
 				pathInfo.y = weight;
 
-				} else if ( restir_pass == PASS_SHADE_PIXEL ) {
+				#endif
+
+				#if RESTIR_PASS == PASS_SHADE_PIXEL
 
 				/////////////////
 				// SHADE POINT //
 				/////////////////
 
+				fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
+
+				// @resume: there's some issue with the first frame...
 				Ray ray = getCameraRay();
+				// ray.origin = texelFetch( pathX0, ivec2( gl_FragCoord.xy ), 0 ).xyz;
 
 				Sample samp;
 				samp.path[0] = ray.origin;
@@ -382,7 +499,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				
 				}
 
-				}
+				#endif
 
 			}
 		`;
@@ -395,16 +512,14 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 		this.defines["PASS_GEN_SAMPLE"] = Pass.GenSample;
 		this.defines["PASS_SHADE_PIXEL"] = Pass.ShadePixel;
 
-		// this.defines["RESTIR_PASS"] = pass;
+		this.defines["RESTIR_PASS"] = pass;
 
-        this.setValues( parameters );
+		if ( pass == Pass.GenSample ) {
+
+			// this.colorWrite = false;
+
+		}
 
     }
-
-	setPass( pass ) {
-
-		this.uniforms["restir_pass"] = { value: pass };
-
-	}
 
 }
