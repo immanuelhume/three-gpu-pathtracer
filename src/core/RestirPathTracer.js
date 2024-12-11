@@ -109,20 +109,18 @@ export class RestirPathTracer {
             stratifiedOffsetTexture: { value: new BlueNoiseTexture( 64, 1 ) },
 
         };
-
-        this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
-        this.passShadePixel.material.uniforms = {
-            ...this.passShadePixel.material.uniforms,
-            ...this.sharedUniforms,
-        };
-        this.passShadePixel.material.defines = {
-            ...this.passShadePixel.material.defines,
-            ...this.sharedDefines,
-        };
-
         this.sharedUniforms.stratifiedTexture.value.init( 20, 24 ); // @todo: what should this be?
 
-        this.passPaintGreen = new FullScreenQuad( new SimpleMaterial() );
+        this.passGenSample = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample ) );
+        this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
+        this.passAverageSamples = new FullScreenQuad( new AverageSamplesMaterial() );
+        this.passToneMap = new FullScreenQuad( new ClampedInterpolationMaterial( {
+			map: null,
+			transparent: true,
+			blending: NoBlending,
+
+			premultipliedAlpha: renderer.getContextAttributes().premultipliedAlpha,
+        } ) );
 
         this.pingTarget = new WebGLRenderTarget( 1, 1, {
 
@@ -154,19 +152,51 @@ export class RestirPathTracer {
             generateMipmaps: false,
 
         } );
+        this.samplesTarget = new WebGLRenderTarget( 1, 1, {
 
-        this.passAverageSamples = new FullScreenQuad( new AverageSamplesMaterial() );
+			format: RGBAFormat,
+			type: FloatType,
+			depthBuffer: false,
+			magFilter: NearestFilter,
+			minFilter: NearestFilter,
+			count: 4,
 
-        this.passToneMap = new FullScreenQuad( new ClampedInterpolationMaterial( {
-			map: null,
-			transparent: true,
-			blending: NoBlending,
-
-			premultipliedAlpha: renderer.getContextAttributes().premultipliedAlpha,
-        } ) );
-
+		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );
 
+        this.passGenSample.material.uniforms = {
+
+            ...this.passGenSample.material.uniforms,
+            ...this.sharedUniforms,
+
+        };
+        this.passGenSample.material.defines = {
+
+            ...this.passGenSample.material.defines,
+            ...this.sharedDefines,
+
+        };
+
+        this.passShadePixel.material.uniforms = {
+
+            ...this.passShadePixel.material.uniforms,
+            ...this.sharedUniforms,
+            pathX0: { value: this.samplesTarget.textures[ 0 ] },
+            pathX1: { value: this.samplesTarget.textures[ 1 ] },
+            pathX2: { value: this.samplesTarget.textures[ 2 ] },
+            pathInfo: { value: this.samplesTarget.textures[ 3 ] },
+
+        };
+        this.passShadePixel.material.defines = {
+
+            ...this.passShadePixel.material.defines,
+            ...this.sharedDefines,
+
+        };
+
+
+
+        // set dummy scene and camera
 		this.setScene( new THREE.Scene(), new THREE.PerspectiveCamera() );
 
     }
@@ -185,21 +215,21 @@ export class RestirPathTracer {
 
         this.updateScale();
 
-        // dummy
-        // this.passPaintGreen.material.onBeforeRender();
-        // this.renderer.setRenderTarget( this.pingTarget );
-        // this.passPaintGreen.render( this.renderer );
-
         this.renderer.autoClear = false;
 
-
-        // shade pixel
+        // update uniforms
         this.sharedUniforms.opacity.value = THREE.NoBlending;
         this.sharedUniforms.resolution.value.set( this.pingTarget.width, this.pingTarget.height ); // @todo: subwidth, as in the original code?
         this.sharedUniforms.sobolTexture.value = this.sobolTarget.texture;
         this.sharedUniforms.stratifiedTexture.value.next();
         this.sharedUniforms.seed.value++;
 
+        // generate sample
+        this.passGenSample.material.onBeforeRender();
+        this.renderer.setRenderTarget( this.samplesTarget );
+        this.passGenSample.render( this.renderer );
+
+        // shade pixel
         this.passShadePixel.material.onBeforeRender();
         this.renderer.setRenderTarget( this.pingTarget );
         this.passShadePixel.render( this.renderer );
@@ -285,6 +315,7 @@ export class RestirPathTracer {
         this.pingTarget.setSize( w, h );
         this.pongTarget.setSize( w, h );
         this.pungTarget.setSize( w, h );
+        this.samplesTarget.setSize( w, h );
 
     }
 

@@ -384,7 +384,17 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				// @resume: there's some issue with the first frame...
 				Ray ray = getCameraRay();
-				// ray.origin = texelFetch( pathX0, ivec2( gl_FragCoord.xy ), 0 ).xyz;
+
+				vec4 pathInfo = texelFetch( pathInfo, ivec2( gl_FragCoord.xy ), 0 );
+
+				if ( pathInfo.x < 0.0 ) {
+
+					// Primary ray missed.
+					return;
+
+				}
+				
+				ray.origin = texelFetch( pathX0, ivec2( gl_FragCoord.xy ), 0 ).xyz;
 
 				Sample samp;
 				samp.path[0] = ray.origin;
