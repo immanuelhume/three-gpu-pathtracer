@@ -304,11 +304,20 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			// vec4 x1, material index
 			// vec4 x2, material index
 			// vec4 ok, weight, (), ()
+			//
+			// ok < 0.0: primary ray missed
+			// ok < 1.0: secondary ray missed
+			// otherwise: ok
 
-			layout(location = 0) out vec4 pathX0;
-			layout(location = 1) out vec4 pathX1;
-			layout(location = 2) out vec4 pathX2;
-			layout(location = 3) out vec4 pathInfo;
+			layout(location = 0) out vec4 surfaceHit_faceIndices;
+			layout(location = 1) out vec4 surfaceHit_barycoord_side;
+			layout(location = 2) out vec4 surfaceHit_faceNormal_dist;
+			layout(location = 3) out vec4 pathX2;
+			layout(location = 4) out vec4 pathInfo;
+			// layout(location = 0) out vec4 pathX0;
+			// layout(location = 1) out vec4 pathX1;
+			// layout(location = 2) out vec4 pathX2;
+			// layout(location = 3) out vec4 pathInfo;
 
 			#endif
 
@@ -316,8 +325,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			layout(location = 0) out vec4 fragColor;
 
-			uniform sampler2D pathX0;
-			uniform sampler2D pathX1;
+			uniform sampler2D surfaceHit_faceIndices;
+			uniform sampler2D surfaceHit_barycoord_side;
+			uniform sampler2D surfaceHit_faceNormal_dist;
 			uniform sampler2D pathX2;
 			uniform sampler2D pathInfo;
 
@@ -336,15 +346,17 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// GENERATE SAMPLE //
 				/////////////////////
 
-				Ray ray = getCameraRay();
-
-				SurfaceHit surfaceHit;
-				int hitType = traceScene( ray, surfaceHit );
-
-				pathX0 = vec4( 0.0, 0.0, 0.0, 1.0 );
-				pathX1 = vec4( 0.0, 0.0, 0.0, 1.0 );
+				surfaceHit_faceIndices = vec4( 0.0, 0.0, 0.0, 1.0 );
+				surfaceHit_barycoord_side = vec4( 0.0, 0.0, 0.0, 1.0 );
+				surfaceHit_faceNormal_dist = vec4( 0.0, 0.0, 0.0, 1.0 );
 				pathX2 = vec4( 0.0, 0.0, 0.0, 1.0 );
 				pathInfo = vec4( 0.0, 0.0, 0.0, 1.0 );
+
+				pathInfo.x = 1.0;
+
+				Ray ray = getCameraRay();
+				SurfaceHit surfaceHit;
+				int hitType = traceScene( ray, surfaceHit );
 
 				if ( hitType != SURFACE_HIT ) {
 
@@ -352,22 +364,27 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					return;
 					
 				}
+
+				surfaceHit_faceIndices = vec4( surfaceHit.faceIndices );
+				surfaceHit_barycoord_side = vec4( surfaceHit.barycoord, surfaceHit.side );
+				surfaceHit_faceNormal_dist = vec4( surfaceHit.faceNormal, surfaceHit.dist );
 				
-				pathInfo.x = 1.0;
-
 				vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-				uint hitPointMaterialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-
 				EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles );
-				uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
-
 				vec3 lightDir = normalize( emTri.barycoord - hitPoint );
+
+				if ( dot( lightDir, emTri.normal ) >= 0.0 ||! isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) ) {
+				
+					// Wrong side of the light
+					pathInfo.x = 0.0;
+					return;
+				
+				}
+
+				uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
 
 				float weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // weight=1/pdf
 
-				pathX0.xyz = ray.origin;
-				pathX1.xyz = hitPoint;
-				pathX1.w = float( hitPointMaterialIndex );
 				pathX2.xyz = emTri.barycoord;
 				pathX2.w = float( emTriMaterialIndex );
 				pathInfo.y = weight;
@@ -382,7 +399,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
 
-				// @resume: there's some issue with the first frame...
 				Ray ray = getCameraRay();
 
 				vec4 pathInfo = texelFetch( pathInfo, ivec2( gl_FragCoord.xy ), 0 );
@@ -393,109 +409,149 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					return;
 
 				}
-				
-				ray.origin = texelFetch( pathX0, ivec2( gl_FragCoord.xy ), 0 ).xyz;
+
+				uvec4 faceIndices = uvec4( texelFetch( surfaceHit_faceIndices, ivec2( gl_FragCoord.xy ), 0 ) );
+				vec4 barycoord_side = texelFetch( surfaceHit_barycoord_side, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 faceNormal_dist = texelFetch( surfaceHit_faceNormal_dist, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX2 = texelFetch( pathX2, ivec2( gl_FragCoord.xy ), 0 );
+
+				SurfaceHit surfaceHit = SurfaceHit( faceIndices, barycoord_side.xyz, faceNormal_dist.xyz, barycoord_side.w, faceNormal_dist.w );
 
 				Sample samp;
 				samp.path[0] = ray.origin;
+				samp.path[1] = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
+				samp.path[2] = pathX2.xyz;
+				samp.weight = pathInfo.y;
 
-				SurfaceHit surfaceHit;
-				int hitType = traceScene( ray, surfaceHit );
+				SurfaceRecord surf;
+				{
 
-				if ( hitType == SURFACE_HIT ) {
+					uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+					Material material = readMaterialInfo( materials, materialIndex );
 
-					SurfaceRecord surf;
-					{
+					int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
+					if ( surfRecord == SKIP_SURFACE ) {
 
-						uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-						Material material = readMaterialInfo( materials, materialIndex );
-
-						int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
-						if ( surfRecord == SKIP_SURFACE ) {
-
-							// TODO: what's the semantics of skipping a surface even
-							fragColor = vec4( surf.emission, 1.0 );
-							return;
-
-						}
-
-					}
-
-					// TODO: does not accomodate transmission
-					vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-					samp.path[1] = hitPoint;
-
-					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles );
-					float lightDist = length( emTri.barycoord - hitPoint );
-					vec3 lightDir = normalize( emTri.barycoord - hitPoint );
-
-					if ( dot( lightDir, surf.normal ) < 0.0 ) {
-
-						// Light is behind the surface
-						//
-						// TODO: this does not support transmission...
-
+						// TODO: what's the semantics of skipping a surface even
 						fragColor = vec4( surf.emission, 1.0 );
 						return;
 
 					}
 
-					if ( isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) && dot( lightDir, emTri.normal ) < 0.0 ) {
+				}
 
-						Ray shadowRay = Ray( hitPoint, lightDir );
-						SurfaceHit lightHit;
-						int hitType = traceScene( shadowRay, lightHit );
+				float lightDist = length( samp.path[1] - samp.path[2] );
+				vec3 lightDir = normalize( samp.path[2] - samp.path[1] );
 
-						if ( hitType == SURFACE_HIT ) {
+				if ( pathInfo.y < 1.0 || dot( lightDir, surf.normal ) < 0.0 ) {
 
-							if ( lightHit.dist < lightDist - 0.001 ) {
+					// Light is behind the surface
+					//
+					// @todo: support transmission...
 
-								// Light is blocked
-								fragColor = vec4( surf.emission, 1.0 );
+					fragColor = vec4( surf.emission, 1.0 );
+					return;
 
-							} else {
+				}
 
-								Material lightMaterial;
-								{
-									uint materialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
-									lightMaterial = readMaterialInfo( materials, materialIndex );
-								}
-								vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+				Ray shadowRay = Ray( samp.path[ 1 ], lightDir );
+				SurfaceHit lightHit;
+				int hitType = traceScene( shadowRay, lightHit );
 
-								samp.path[2] = emTri.barycoord;
-								samp.weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // 1/pdf
+				if ( hitType == SURFACE_HIT ) {
 
-								vec3 sampleColor;
-								float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
-								float g = 1.0 / ( lightDist * lightDist );
+					if ( lightHit.dist < lightDist - 0.001 ) {
 
-								if ( materialPdf > 0.0 ) {
+						// Light is blocked
+						fragColor = vec4( surf.emission, 1.0 );
 
-									float g = 1.0 / ( lightDist * lightDist );
+					} else {
 
-									fragColor = vec4( surf.emission + emission * sampleColor * samp.weight * g, 1.0 );
+						Material lightMaterial;
+						{
+							uint materialIndex = uint( pathX2.w );
+							lightMaterial = readMaterialInfo( materials, materialIndex );
+						}
+						vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
 
-								} else {
+						vec3 sampleColor;
+						float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
+						float g = 1.0 / ( lightDist * lightDist );
 
-									// This branch should not occur - it probably means the light is beneath the surface, which we have already checked for.
+						if ( materialPdf > 0.0 ) {
 
-									fragColor = vec4( surf.emission, 1.0 );
+							float g = 1.0 / ( lightDist * lightDist );
 
-								}
-
-							}
+							fragColor = vec4( surf.emission + emission * sampleColor * samp.weight * g, 1.0 );
 
 						} else {
 
-							// Sampled light is obstructed from hit point.
+							// This branch should not occur - it probably means the light is beneath the surface, which we have already checked for.
 
 							fragColor = vec4( surf.emission, 1.0 );
 
 						}
 
+					}
+
+				} else {
+
+					// Sampled light is obstructed from hit point.
+
+					fragColor = vec4( surf.emission, 1.0 );
+
+				}
+
+				/*
+				if ( isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) && dot( lightDir, emTri.normal ) < 0.0 ) {
+
+					Ray shadowRay = Ray( hitPoint, lightDir );
+					SurfaceHit lightHit;
+					int hitType = traceScene( shadowRay, lightHit );
+
+					if ( hitType == SURFACE_HIT ) {
+
+						if ( lightHit.dist < lightDist - 0.001 ) {
+
+							// Light is blocked
+							fragColor = vec4( surf.emission, 1.0 );
+
+						} else {
+
+							Material lightMaterial;
+							{
+								uint materialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+								materialIndex = uint( pathX2.w );
+								lightMaterial = readMaterialInfo( materials, materialIndex );
+							}
+							vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+							samp.path[2] = emTri.barycoord;
+							samp.weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // 1/pdf
+
+							vec3 sampleColor;
+							float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
+							float g = 1.0 / ( lightDist * lightDist );
+
+							if ( materialPdf > 0.0 ) {
+
+								float g = 1.0 / ( lightDist * lightDist );
+
+								fragColor = vec4( surf.emission + emission * sampleColor * samp.weight * g, 1.0 );
+
+							} else {
+
+								// This branch should not occur - it probably means the light is beneath the surface, which we have already checked for.
+
+								fragColor = vec4( surf.emission, 1.0 );
+
+							}
+
+						}
+
 					} else {
 
-						// Sampled light does not face the hit point (only one side of a triangle is emissive).
+						// Sampled light is obstructed from hit point.
 
 						fragColor = vec4( surf.emission, 1.0 );
 
@@ -503,11 +559,22 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				} else {
 
+					// Sampled light does not face the hit point (only one side of a triangle is emissive).
+
+					fragColor = vec4( surf.emission, 1.0 );
+
+				}
+				*/
+
+				/*
+				} else {
+
 					// Primary ray missed.
 				
 					fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
 				
 				}
+				*/
 
 				#endif
 
@@ -523,12 +590,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 		this.defines["PASS_SHADE_PIXEL"] = Pass.ShadePixel;
 
 		this.defines["RESTIR_PASS"] = pass;
-
-		if ( pass == Pass.GenSample ) {
-
-			// this.colorWrite = false;
-
-		}
 
     }
 

@@ -111,7 +111,7 @@ export class RestirPathTracer {
         };
         this.sharedUniforms.stratifiedTexture.value.init( 20, 24 ); // @todo: what should this be?
 
-        this.passGenSample = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample ) );
+        this.passGenSample = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample, { blending: THREE.NoBlending } ) );
         this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
         this.passAverageSamples = new FullScreenQuad( new AverageSamplesMaterial() );
         this.passToneMap = new FullScreenQuad( new ClampedInterpolationMaterial( {
@@ -154,12 +154,14 @@ export class RestirPathTracer {
         } );
         this.samplesTarget = new WebGLRenderTarget( 1, 1, {
 
+            // @resume: try using a uint texture for the face indices
 			format: RGBAFormat,
 			type: FloatType,
 			depthBuffer: false,
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
-			count: 4,
+            internalFormat: 'RGBA32F',
+			count: 5,
 
 		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );
@@ -181,10 +183,11 @@ export class RestirPathTracer {
 
             ...this.passShadePixel.material.uniforms,
             ...this.sharedUniforms,
-            pathX0: { value: this.samplesTarget.textures[ 0 ] },
-            pathX1: { value: this.samplesTarget.textures[ 1 ] },
-            pathX2: { value: this.samplesTarget.textures[ 2 ] },
-            pathInfo: { value: this.samplesTarget.textures[ 3 ] },
+            surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
+            surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
+            surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
+            pathX2: { value: this.samplesTarget.textures[ 3 ] },
+            pathInfo: { value: this.samplesTarget.textures[ 4 ] },
 
         };
         this.passShadePixel.material.defines = {
@@ -193,8 +196,6 @@ export class RestirPathTracer {
             ...this.sharedDefines,
 
         };
-
-
 
         // set dummy scene and camera
 		this.setScene( new THREE.Scene(), new THREE.PerspectiveCamera() );
@@ -281,8 +282,8 @@ export class RestirPathTracer {
 
 		}
 
-        // @todo: set this define for the other passes
 		this.passShadePixel.material.setDefine( 'CAMERA_TYPE', cameraType );
+        this.passGenSample.material.setDefine( 'CAMERA_TYPE', cameraType );
 
         this.reset();
 
@@ -316,6 +317,8 @@ export class RestirPathTracer {
         this.pongTarget.setSize( w, h );
         this.pungTarget.setSize( w, h );
         this.samplesTarget.setSize( w, h );
+
+        this.reset();
 
     }
 
@@ -433,6 +436,10 @@ export class RestirPathTracer {
         this.renderer.clearColor();
 
         this.renderer.setRenderTarget( this.pungTarget );
+        this.renderer.setClearColor( 0, 0 );
+        this.renderer.clearColor();
+
+        this.renderer.setRenderTarget( this.samplesTarget );
         this.renderer.setClearColor( 0, 0 );
         this.renderer.clearColor();
 
