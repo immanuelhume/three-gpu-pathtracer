@@ -113,8 +113,8 @@ async function init() {
     box1.position.x = -0.7;
     box1.rotateY(Math.PI/9);
 
-    // const box2Geom = new THREE.BoxGeometry(1.2, 1.2);
-    const box2Geom = new THREE.SphereGeometry(0.6);
+    const box2Geom = new THREE.BoxGeometry(1.2, 1.2);
+    // const box2Geom = new THREE.SphereGeometry(0.6);
     // const box2Geom = new THREE.CylinderGeometry(0.6, 0.6, 1.2);
     const box2Mat = new THREE.MeshPhysicalMaterial({ emissive: 0x88ffff, emissiveIntensity: 1.0 });
     box2 = new THREE.Mesh(box2Geom, box2Mat);
