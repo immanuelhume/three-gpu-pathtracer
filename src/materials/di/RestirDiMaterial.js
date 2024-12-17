@@ -69,15 +69,17 @@ export class AverageSamplesMaterial extends ShaderMaterial {
 
 				void main() {
 
-					vec4 color = texelFetch( curr, ivec2( gl_FragCoord.xy ), 0 );
+					vec4 incoming = texelFetch( newSample, ivec2( gl_FragCoord.xy ), 0 );
 
 					if ( nSamples == 0u ) {
 
-						gl_FragColor = color;
+						gl_FragColor = incoming;
 
 					} else {
 
-						gl_FragColor = ( color * float( nSamples ) + texture2D( newSample, vUv ) ) / float( nSamples + 1u );
+						vec4 existing = texelFetch( curr, ivec2( gl_FragCoord.xy ), 0 );
+
+						gl_FragColor = ( existing * float( nSamples ) + incoming ) / float( nSamples + 1u );
 
 					}
 
@@ -287,33 +289,68 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			// restir
 
+			const vec3 luma = vec3( 0.2126, 0.7152, 0.0722 );
+
 			${ StructsGLSL.emissive_triangles_struct }
 
 			uniform EmissiveTrianglesInfo emissiveTriangles;
 
 			struct Sample {
 
-				vec3 path[3];
+				vec4 path[3];
 				float weight;
 
 			};
 
+			struct Reservoir {
+
+				Sample sampleOut;
+				float phatOut;
+				float wSum;
+				bool valid;
+			
+			};
+
+			Reservoir initReservoir() {
+
+				Reservoir reservoir;
+				reservoir.wSum = 0.0;
+				reservoir.valid = false;
+				return reservoir;
+
+			}
+
+			void addSample( inout Reservoir reservoir, Sample samp, float phat, float r ) {
+
+				reservoir.wSum += samp.weight;
+
+				if ( r <= samp.weight / reservoir.wSum ) {
+
+					reservoir.sampleOut = samp;
+					reservoir.phatOut = phat;
+					reservoir.valid = true;
+				
+				}
+
+			}
+
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
-			// vec4 x0, ()
-			// vec4 x1, material index
-			// vec4 x2, material index
-			// vec4 ok, weight, (), ()
-			//
-			// ok < 0.0: primary ray missed
-			// ok < 1.0: secondary ray missed
-			// otherwise: ok
+			/*
+			vec4 pathInfo: ok, weight, (), ()
+			
+			ok < 0.0: primary ray missed
+			ok < 1.0: secondary ray missed
+			otherwise: ok
+			*/
 
 			layout(location = 0) out vec4 surfaceHit_faceIndices;
 			layout(location = 1) out vec4 surfaceHit_barycoord_side;
 			layout(location = 2) out vec4 surfaceHit_faceNormal_dist;
 			layout(location = 3) out vec4 pathX2;
 			layout(location = 4) out vec4 pathInfo;
+
+			uniform int M_area; // number of uniform random area light samples
 
 			#endif
 
@@ -361,29 +398,77 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					
 				}
 
+				SurfaceRecord surf;
+				{
+
+					uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+					Material material = readMaterialInfo( materials, materialIndex );
+
+					int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
+					if ( surfRecord == SKIP_SURFACE ) {
+
+						// TODO: what's the semantics of skipping a surface even
+						pathInfo.x = 0.0;
+						return;
+
+					}
+
+				}
+
 				surfaceHit_faceIndices = vec4( surfaceHit.faceIndices );
 				surfaceHit_barycoord_side = vec4( surfaceHit.barycoord, surfaceHit.side );
 				surfaceHit_faceNormal_dist = vec4( surfaceHit.faceNormal, surfaceHit.dist );
 				
 				vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-				EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles );
-				vec3 lightDir = normalize( emTri.barycoord - hitPoint );
 
-				if ( dot( lightDir, emTri.normal ) >= 0.0 ||! isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) ) {
-				
-					// Wrong side of the light
-					pathInfo.x = 0.0;
-					return;
+				Reservoir reservoir = initReservoir();
+
+				for ( int i = 0; i < M_area; ++i ) {
+
+					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( 16 + i ) );
+					vec3 lightDir = normalize( emTri.barycoord - hitPoint );
+					float lightDist = length( emTri.barycoord - hitPoint );
+
+					if ( dot( lightDir, emTri.normal ) >= 0.0 ||! isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) ) {
+					
+						// Wrong side of the light
+						continue;
+					
+					}
+
+					float invPdf = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
+
+					uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+					Material lightMaterial = readMaterialInfo( materials, emTriMaterialIndex );
+					vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+					vec3 sampleColor;
+					float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
+
+					float invLightDistSquared = 1.0 / ( lightDist * lightDist );
+					float phat = dot( sampleColor, luma ) * dot( emission, luma ) * invLightDistSquared;
+
+					float weight = ( 1.0 / float( M_area ) ) * phat * invPdf;
+
+					Sample samp;
+					samp.path[0] = vec4( ray.origin, 0.0 );
+					samp.path[1] = vec4( hitPoint, 0.0 );
+					samp.path[2] = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
+					samp.weight = weight;
+
+					addSample( reservoir, samp, phat, rand( 17 + i ) );
 				
 				}
 
-				uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+				if ( !reservoir.valid ) {
 
-				float weight = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count ); // weight=1/pdf
+					pathInfo.x = 0.0;
+					return;
 
-				pathX2.xyz = emTri.barycoord;
-				pathX2.w = float( emTriMaterialIndex );
-				pathInfo.y = weight;
+				}
+
+				pathX2 = reservoir.sampleOut.path[ 2 ];
+				pathInfo.y = reservoir.wSum / reservoir.phatOut;
 
 				#endif
 
@@ -414,9 +499,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				SurfaceHit surfaceHit = SurfaceHit( faceIndices, barycoord_side.xyz, faceNormal_dist.xyz, barycoord_side.w, faceNormal_dist.w );
 
 				Sample samp;
-				samp.path[0] = ray.origin;
-				samp.path[1] = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-				samp.path[2] = pathX2.xyz;
+				samp.path[0] = vec4( ray.origin, 0.0 );
+				samp.path[1] = vec4( stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist ), 0.0 );
+				samp.path[2] = pathX2;
 				samp.weight = pathInfo.y;
 
 				SurfaceRecord surf;
@@ -436,8 +521,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				float lightDist = length( samp.path[1] - samp.path[2] );
-				vec3 lightDir = normalize( samp.path[2] - samp.path[1] );
+				float lightDist = length( samp.path[ 2 ].xyz - samp.path[ 1 ].xyz );
+				vec3 lightDir = normalize( samp.path[ 2 ].xyz - samp.path[ 1 ].xyz );
 
 				if ( pathInfo.x < 1.0 || dot( lightDir, surf.normal ) <= 0.0 ) {
 
@@ -450,7 +535,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				Ray shadowRay = Ray( samp.path[ 1 ], lightDir );
+				Ray shadowRay = Ray( samp.path[ 1 ].xyz, lightDir );
 				SurfaceHit lightHit;
 				int hitType = traceScene( shadowRay, lightHit );
 
@@ -478,7 +563,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 							float g = 1.0 / ( lightDist * lightDist );
 
-							fragColor = vec4( surf.emission + emission * sampleColor * samp.weight * g, 1.0 );
+							fragColor = vec4( surf.emission + sampleColor * emission * g * samp.weight, 1.0 );
 
 						} else {
 

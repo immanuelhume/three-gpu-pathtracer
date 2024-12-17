@@ -1,10 +1,9 @@
 import { PerspectiveCamera, Scene, Vector2, Clock, NormalBlending, NoBlending, AdditiveBlending } from 'three';
 import { PathTracingSceneGenerator } from './PathTracingSceneGenerator.js';
 import { PathTracingRenderer } from './PathTracingRenderer.js';
-import { RestirDiRenderer } from './RestirDiRenderer.js';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { GradientEquirectTexture } from '../textures/GradientEquirectTexture.js';
-import { getIesTextures, getLights, getTextures, getEmissiveTriangles } from './utils/sceneUpdateUtils.js';
+import { getIesTextures, getLights, getTextures } from './utils/sceneUpdateUtils.js';
 import { ClampedInterpolationMaterial } from '../materials/fullscreen/ClampedInterpolationMaterial.js';
 import { CubeToEquirectGenerator } from '../utils/CubeToEquirectGenerator.js';
 
@@ -106,14 +105,12 @@ export class WebGLPathTracer {
 		// members
 		this._renderer = renderer;
 		this._generator = new PathTracingSceneGenerator();
-		this._pathTracer = new RestirDiRenderer( renderer );
-		// this._pathTracer = new PathTracingRenderer( renderer );
+		this._pathTracer = new PathTracingRenderer( renderer );
 		this._queueReset = false;
 		this._clock = new Clock();
 		this._compilePromise = null;
 
-		this._lowResPathTracer = new RestirDiRenderer( renderer );
-		// this._lowResPathTracer = new PathTracingRenderer( renderer );
+		this._lowResPathTracer = new PathTracingRenderer( renderer );
 		this._lowResPathTracer.tiles.set( 1, 1 );
 		this._quad = new FullScreenQuad( new ClampedInterpolationMaterial( {
 			map: null,
@@ -130,8 +127,7 @@ export class WebGLPathTracer {
 
 		// options
 		this.renderDelay = 100;
-		// this.minSamples = 5;
-		this.minSamples = 0;
+		this.minSamples = 5;
 		this.fadeDuration = 500;
 		this.enablePathTracing = true;
 		this.pausePathTracing = false;
@@ -211,9 +207,6 @@ export class WebGLPathTracer {
 	}
 
 	updateCamera() {
-
-		// TODO: this resets path tracer whenever the camera moves (i.e. we
-		// throw away everything done so // far), probably not good for restir
 
 		const camera = this.camera;
 		camera.updateMatrixWorld();
@@ -351,7 +344,6 @@ export class WebGLPathTracer {
 			bvh,
 			bvhChanged,
 			needsMaterialIndexUpdate,
-			emissiveTriangles,
 		} = results;
 
 		this._materials = materials;
@@ -376,8 +368,6 @@ export class WebGLPathTracer {
 			material.materialIndexAttribute.updateFrom( geometry.attributes.materialIndex );
 
 		}
-
-		material.emissiveTriangles.updateFrom( emissiveTriangles );
 
 		// save previously used items
 		this._previousScene = scene;

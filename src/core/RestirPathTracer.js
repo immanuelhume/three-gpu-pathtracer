@@ -45,7 +45,7 @@ export class RestirPathTracer {
             // 0 = PCG
             // 1 = Sobol
             // 2 = Stratified List
-            RANDOM_TYPE: 2,
+            RANDOM_TYPE: 1,
 
             // 0 = Perspective
             // 1 = Orthographic
@@ -179,6 +179,13 @@ export class RestirPathTracer {
 
         };
 
+        this.passGenSample.material.uniforms = {
+            
+            ...this.passGenSample.material.uniforms,
+            ...this.sharedUniforms,
+            M_area: { value: 16 },
+
+        };
         this.passShadePixel.material.uniforms = {
 
             ...this.passShadePixel.material.uniforms,

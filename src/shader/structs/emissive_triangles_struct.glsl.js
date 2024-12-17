@@ -48,9 +48,8 @@ export const emissive_triangles_struct = /* glsl */`
 
     }
 
-    EmissiveTriangle randomEmissiveTriangle( EmissiveTrianglesInfo info ) {
+    EmissiveTriangle randomEmissiveTriangle( EmissiveTrianglesInfo info, float r ) {
 
-        float r = rand( 16 );
         uint nTriangles = info.count;
         uint index = min( nTriangles - 1u, uint( r * float( nTriangles ) ) );
 
@@ -76,11 +75,11 @@ export const emissive_triangles_struct = /* glsl */`
 
     }
 
-	EmissiveTriangleSample randomEmissiveTriangleSample( EmissiveTrianglesInfo info ) {
+	EmissiveTriangleSample randomEmissiveTriangleSample( EmissiveTrianglesInfo info, float r ) {
 
         EmissiveTriangleSample samp;
 
-		samp.tri = randomEmissiveTriangle( info );
+		samp.tri = randomEmissiveTriangle( info, r );
         samp.barycoord = randomBarycentric( samp.tri.vertices );
         samp.normal = normalize( textureSampleBarycoord(
 			attributesArray,

@@ -57,36 +57,6 @@ export class EmissiveTrianglesInfoUniformStruct {
 
 		}
 
-		console.log( "indices", indices );
-		console.log( "emissive triangles buffer", data );
-
-		/*
-		for ( let i = 0; i < indices.length; i ++ ) {
-
-			const t = indices[ i ];
-
-			const baseIndex = i * NVERTICES * 4;
-			let index = 0;
-
-			// initialize to 0
-			for ( let p = 0; p < NVERTICES * 4; p ++ ) {
-
-				floatArray[ baseIndex + p ] = 0;
-
-			}
-
-			for ( const v of t.vertices ) {
-
-				floatArray[ baseIndex + ( index ++ ) ] = v.x;
-				floatArray[ baseIndex + ( index ++ ) ] = v.y;
-				floatArray[ baseIndex + ( index ++ ) ] = v.z;
-				floatArray[ baseIndex + ( index ++ ) ] = 1.0; // not used
-
-			}
-
-		}
-		*/
-
 		this.count = indices.length / 3;
 
 		const hash = bufferToHash( data.buffer );
