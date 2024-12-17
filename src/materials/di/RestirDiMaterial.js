@@ -423,6 +423,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				Reservoir reservoir = initReservoir();
 
+				float invM_area = 1.0 / float( M_area );
+
 				for ( int i = 0; i < M_area; ++i ) {
 
 					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( 16 + i ) );
@@ -448,7 +450,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					float invLightDistSquared = 1.0 / ( lightDist * lightDist );
 					float phat = dot( sampleColor, luma ) * dot( emission, luma ) * invLightDistSquared;
 
-					float weight = ( 1.0 / float( M_area ) ) * phat * invPdf;
+					float weight = invM_area * phat * invPdf;
 
 					Sample samp;
 					samp.path[0] = vec4( ray.origin, 0.0 );
