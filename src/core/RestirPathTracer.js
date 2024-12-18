@@ -182,8 +182,8 @@ export class RestirPathTracer {
             
             ...this.passGenSample.material.uniforms,
             ...this.sharedUniforms,
-            M_area: { value: 0 },
-            M_bsdf: { value: 1 },
+            M_area: { value: 8 },
+            M_bsdf: { value: 0 },
 
         };
         this.passShadePixel.material.uniforms = {

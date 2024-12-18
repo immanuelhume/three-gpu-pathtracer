@@ -444,6 +444,97 @@ export const bsdf_functions = /* glsl */`
 		result.direction = normalize( surf.normalBasis * wi );
 
 		return result;
+		// @todo: use the other bsdfSample
+
+	}
+
+	ScatterRecord bsdfSample( vec3 worldWo, SurfaceRecord surf, vec2 r2 ) {
+
+		if ( surf.volumeParticle ) {
+
+			ScatterRecord sampleRec;
+			sampleRec.specularPdf = 0.0;
+			sampleRec.pdf = 1.0 / ( 4.0 * PI );
+			sampleRec.direction = sampleSphere( r2 );
+			sampleRec.color = surf.color / ( 4.0 * PI );
+			return sampleRec;
+
+		}
+
+		vec3 wo = normalize( surf.normalInvBasis * worldWo );
+		vec3 clearcoatWo = normalize( surf.clearcoatInvBasis * worldWo );
+		mat3 normalBasis = surf.normalBasis;
+		mat3 invBasis = surf.normalInvBasis;
+		mat3 clearcoatNormalBasis = surf.clearcoatBasis;
+		mat3 clearcoatInvBasis = surf.clearcoatInvBasis;
+
+		float diffuseWeight;
+		float specularWeight;
+		float transmissionWeight;
+		float clearcoatWeight;
+		// using normal and basically-reflected ray since we don't have proper half vector here
+		getLobeWeights( wo, wo, vec3( 0, 0, 1 ), clearcoatWo, surf, diffuseWeight, specularWeight, transmissionWeight, clearcoatWeight );
+
+		float pdf[4];
+		pdf[0] = diffuseWeight;
+		pdf[1] = specularWeight;
+		pdf[2] = transmissionWeight;
+		pdf[3] = clearcoatWeight;
+
+		float cdf[4];
+		cdf[0] = pdf[0];
+		cdf[1] = pdf[1] + cdf[0];
+		cdf[2] = pdf[2] + cdf[1];
+		cdf[3] = pdf[3] + cdf[2];
+
+		if( cdf[3] != 0.0 ) {
+
+			float invMaxCdf = 1.0 / cdf[3];
+			cdf[0] *= invMaxCdf;
+			cdf[1] *= invMaxCdf;
+			cdf[2] *= invMaxCdf;
+			cdf[3] *= invMaxCdf;
+
+		} else {
+
+			cdf[0] = 1.0;
+			cdf[1] = 0.0;
+			cdf[2] = 0.0;
+			cdf[3] = 0.0;
+
+		}
+
+		vec3 wi;
+		vec3 clearcoatWi;
+
+		float r = r2.x;
+		if ( r <= cdf[0] ) { // diffuse
+
+			wi = diffuseDirection( wo, surf );
+			clearcoatWi = normalize( clearcoatInvBasis * normalize( normalBasis * wi ) );
+
+		} else if ( r <= cdf[1] ) { // specular
+
+			wi = specularDirection( wo, surf );
+			clearcoatWi = normalize( clearcoatInvBasis * normalize( normalBasis * wi ) );
+
+		} else if ( r <= cdf[2] ) { // transmission / refraction
+
+			wi = transmissionDirection( wo, surf );
+			clearcoatWi = normalize( clearcoatInvBasis * normalize( normalBasis * wi ) );
+
+		} else if ( r <= cdf[3] ) { // clearcoat
+
+			clearcoatWi = clearcoatDirection( clearcoatWo, surf );
+			wi = normalize( invBasis * normalize( clearcoatNormalBasis * clearcoatWi ) );
+
+		}
+
+		ScatterRecord result;
+		result.pdf = bsdfEval( wo, clearcoatWo, wi, clearcoatWi, surf, diffuseWeight, specularWeight, transmissionWeight, clearcoatWeight, result.specularPdf, result.color );
+		result.direction = normalize( surf.normalBasis * wi );
+
+		return result;
 
 	}
 

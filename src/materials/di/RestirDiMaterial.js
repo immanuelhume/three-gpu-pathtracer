@@ -438,7 +438,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					
 					}
 
-					float invLightPdf = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
+					float g = 1.0 / ( lightDist * lightDist );
+					float invLightPdf = g * emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
 					float lightPdf = 1.0 / invLightPdf;
 
 					uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
@@ -466,7 +467,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				for ( int i = 0; i < M_bsdf; ++i ) {
 
-					ScatterRecord scatterRec = bsdfSample( -ray.direction, surf );
+					ScatterRecord scatterRec = bsdfSample( -ray.direction, surf, rand2( 15 + i ) );
 
 					SurfaceHit surfaceHit;
 					Ray bounceRay = Ray( hitPoint, scatterRec.direction );
@@ -511,7 +512,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					}
 
-					float invLightPdf = triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
+					float g = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
+					float invLightPdf = g * triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
 					float lightPdf = 1.0 / invLightPdf;
 
 					float invLightDistSquared = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
@@ -627,13 +629,12 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 						vec3 sampleColor;
 						float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
-						float g = 1.0 / ( lightDist * lightDist );
 
 						if ( materialPdf > 0.0 ) {
 
-							float g = 1.0 / ( lightDist * lightDist );
+							float g =  1.0 / ( lightDist * lightDist );
 
-							fragColor = vec4( surf.emission + sampleColor * emission * g * samp.weight, 1.0 );
+							fragColor = vec4( surf.emission + sampleColor * emission * samp.weight, 1.0 );
 
 						} else {
 
