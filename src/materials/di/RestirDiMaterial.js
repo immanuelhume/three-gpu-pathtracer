@@ -351,6 +351,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			layout(location = 4) out vec4 pathInfo;
 
 			uniform int M_area; // number of uniform random area light samples
+			uniform int M_bsdf; // number of bsdf samples
 
 			#endif
 
@@ -423,8 +424,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				Reservoir reservoir = initReservoir();
 
-				float invM_area = 1.0 / float( M_area );
-
 				for ( int i = 0; i < M_area; ++i ) {
 
 					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( 16 + i ) );
@@ -434,11 +433,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					if ( dot( lightDir, emTri.normal ) >= 0.0 ||! isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) ) {
 					
 						// Wrong side of the light
+						// @resume: is this correct?
 						continue;
 					
 					}
 
-					float invPdf = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
+					float invLightPdf = emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
+					float lightPdf = 1.0 / invLightPdf;
 
 					uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
 					Material lightMaterial = readMaterialInfo( materials, emTriMaterialIndex );
@@ -450,7 +451,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					float invLightDistSquared = 1.0 / ( lightDist * lightDist );
 					float phat = dot( sampleColor, luma ) * dot( emission, luma ) * invLightDistSquared;
 
-					float weight = invM_area * phat * invPdf;
+					float misWeight = lightPdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * materialPdf );
+					float weight = misWeight * phat * invLightPdf;
 
 					Sample samp;
 					samp.path[0] = vec4( ray.origin, 0.0 );
@@ -460,6 +462,72 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					addSample( reservoir, samp, phat, rand( 17 + i ) );
 				
+				}
+
+				for ( int i = 0; i < M_bsdf; ++i ) {
+
+					ScatterRecord scatterRec = bsdfSample( -ray.direction, surf );
+
+					SurfaceHit surfaceHit;
+					Ray bounceRay = Ray( hitPoint, scatterRec.direction );
+					int hitType = traceScene( bounceRay, surfaceHit );
+
+					if ( hitType != SURFACE_HIT ) {
+					
+						// @resume: is this correct?
+						continue;
+
+					}
+
+					uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+					Material material = readMaterialInfo( materials, materialIndex );
+					vec3 emission = material.emissiveIntensity * material.emissive;
+
+					if ( emission == vec3( 0.0 ) ) {
+					
+						// @resume: is this correct?
+						continue;
+
+					}
+
+					vec3 lightHitPoint = stepRayOrigin( bounceRay.origin, bounceRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
+
+					vec3 a = texelFetch1D( bvh.position, surfaceHit.faceIndices.x ).xyz;
+					vec3 b = texelFetch1D( bvh.position, surfaceHit.faceIndices.y ).xyz;
+					vec3 c = texelFetch1D( bvh.position, surfaceHit.faceIndices.z ).xyz;
+
+					vec3 triNormal = normalize( textureSampleBarycoord(
+						attributesArray,
+						ATTR_NORMAL,
+						surfaceHit.barycoord,
+						surfaceHit.faceIndices.xyz
+					).xyz );
+					float triArea = 0.5 * length( cross( b - a, c - a ) );
+
+					if ( dot( bounceRay.direction, triNormal ) >= 0.0 ) {
+					
+						// @resume: is this correct?
+						continue;
+
+					}
+
+					float invLightPdf = triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
+					float lightPdf = 1.0 / invLightPdf;
+
+					float invLightDistSquared = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
+					float phat = dot( scatterRec.color, luma ) * dot( emission, luma ) * invLightDistSquared;
+
+					float misWeight = scatterRec.pdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
+					float weight = misWeight * phat / scatterRec.pdf;
+
+					Sample samp;
+					samp.path[0] = vec4( ray.origin, 0.0 );
+					samp.path[1] = vec4( hitPoint, 0.0 );
+					samp.path[2] = vec4( lightHitPoint, float( materialIndex ) );
+					samp.weight = weight;
+
+					addSample( reservoir, samp, phat, rand( 18 + i ) );
+
 				}
 
 				if ( !reservoir.valid ) {

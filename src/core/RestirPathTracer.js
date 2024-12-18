@@ -154,7 +154,6 @@ export class RestirPathTracer {
         } );
         this.samplesTarget = new WebGLRenderTarget( 1, 1, {
 
-            // @resume: try using a uint texture for the face indices
 			format: RGBAFormat,
 			type: FloatType,
 			depthBuffer: false,
@@ -183,7 +182,8 @@ export class RestirPathTracer {
             
             ...this.passGenSample.material.uniforms,
             ...this.sharedUniforms,
-            M_area: { value: 16 },
+            M_area: { value: 0 },
+            M_bsdf: { value: 1 },
 
         };
         this.passShadePixel.material.uniforms = {
