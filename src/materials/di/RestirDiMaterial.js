@@ -430,7 +430,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					vec3 lightDir = normalize( emTri.barycoord - hitPoint );
 					float lightDist = length( emTri.barycoord - hitPoint );
 
-					if ( dot( lightDir, emTri.normal ) >= 0.0 ||! isDirectionValid( lightDir, emTri.normal, emTri.tri.faceNormal ) ) {
+					if ( dot( lightDir, emTri.normal ) >= 0.0 ) {
 					
 						// Wrong side of the light
 						// @resume: is this correct?

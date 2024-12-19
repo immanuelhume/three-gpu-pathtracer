@@ -54,7 +54,7 @@ export class PhysicalPathTracingMaterial extends MaterialBase {
 				// 0 = PCG
 				// 1 = Sobol
 				// 2 = Stratified List
-				RANDOM_TYPE: 2,
+				RANDOM_TYPE: 1,
 
 				// 0 = Perspective
 				// 1 = Orthographic

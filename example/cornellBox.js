@@ -124,8 +124,8 @@ async function init() {
     box2.position.x = 0.7;
 
     box2.position.z = 2.0;
-    box2.position.y = 0.6;
-    box2.position.x = 0.0;
+    box2.position.y = 0.7;
+    box2.position.x = 1.3;
 
     // box2.rotateY(-Math.PI/7);
 
