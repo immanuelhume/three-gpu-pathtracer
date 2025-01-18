@@ -262,6 +262,8 @@ export class PathTracingSceneGenerator {
 		// only generate a new bvh if the objects used have changed
 		if ( this.generateBVH ) {
 
+			console.log( "generating BVH with", result.changeType, "change type" );
+
 			if ( this.bvh instanceof Promise ) {
 
 				throw new Error( 'PathTracingSceneGenerator: BVH is already building asynchronously.' );

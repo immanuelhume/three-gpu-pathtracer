@@ -298,16 +298,24 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			struct Sample {
 
 				vec4 path[3];
-				float weight;
+				float unbiasedContribWeight;
 
 			};
 
+			struct RisSample {
+
+				vec4 path[3];
+				float resamplingWeight;
+
+			};
+
+			// An abstraction used to facililtate RIS.
 			struct Reservoir {
 
-				Sample sampleOut;
-				float phatOut;
-				float wSum;
-				bool valid;
+				RisSample sampleOut;
+				float phatOut; // evaluation of target function for sampleOut
+				float wSum;    // sum of resampling weights; required for unbiased contribution weight Wx
+				bool valid;    // we might not successfully pick a sample...
 			
 			};
 
@@ -320,11 +328,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			}
 
-			void addSample( inout Reservoir reservoir, Sample samp, float phat, float r ) {
+			void addSample( inout Reservoir reservoir, RisSample samp, float phat, float r ) {
 
-				reservoir.wSum += samp.weight;
+				reservoir.wSum += samp.resamplingWeight;
 
-				if ( r <= samp.weight / reservoir.wSum ) {
+				if ( r <= samp.resamplingWeight / reservoir.wSum ) {
 
 					reservoir.sampleOut = samp;
 					reservoir.phatOut = phat;
@@ -337,7 +345,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
 			/*
-			vec4 pathInfo: ok, weight, (), ()
+			pathInfo.x: ok
+			pathInfo.y: unbiased contrib weight
 			
 			ok < 0.0: primary ray missed
 			ok < 1.0: secondary ray missed
@@ -380,6 +389,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// GENERATE SAMPLE //
 				/////////////////////
 
+				// Initialize outputs
 				surfaceHit_faceIndices = vec4( 0.0, 0.0, 0.0, 1.0 );
 				surfaceHit_barycoord_side = vec4( 0.0, 0.0, 0.0, 1.0 );
 				surfaceHit_faceNormal_dist = vec4( 0.0, 0.0, 0.0, 1.0 );
@@ -438,8 +448,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					
 					}
 
-					float g = 1.0 / ( lightDist * lightDist );
-					float invLightPdf = g * emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
+					float invLightDistSquared = 1.0 / ( lightDist * lightDist );
+
+					float invLightPdf = invLightDistSquared * emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
 					float lightPdf = 1.0 / invLightPdf;
 
 					uint emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
@@ -449,17 +460,24 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					vec3 sampleColor;
 					float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
 
-					float invLightDistSquared = 1.0 / ( lightDist * lightDist );
-					float phat = dot( sampleColor, luma ) * dot( emission, luma ) * invLightDistSquared;
+					// @todo: verify target function?
+					float phat = dot( sampleColor * emission, luma );
 
+					/*
+					// Full calculation: balance heuristic for MIS weight, and
+					// then the resampling weight. A truncation is used since
+					// terms might cancel out in practice.
 					float misWeight = lightPdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * materialPdf );
-					float weight = misWeight * phat * invLightPdf;
+					float resamplingWeight = misWeight * phat * invLightPdf;
+					*/
 
-					Sample samp;
+					float resamplingWeight = phat / ( float( M_area ) * lightPdf + float( M_bsdf ) * materialPdf ); // balance heuristic
+
+					RisSample samp;
 					samp.path[0] = vec4( ray.origin, 0.0 );
 					samp.path[1] = vec4( hitPoint, 0.0 );
 					samp.path[2] = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
-					samp.weight = weight;
+					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, phat, rand( 17 + i ) );
 				
@@ -512,21 +530,25 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					}
 
-					float g = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
-					float invLightPdf = g * triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
+					float invLightDistSquared = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
+					float invLightPdf = invLightDistSquared * triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
 					float lightPdf = 1.0 / invLightPdf;
 
-					float invLightDistSquared = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
-					float phat = dot( scatterRec.color, luma ) * dot( emission, luma ) * invLightDistSquared;
+					// @todo: verify target function?
+					float phat = dot( scatterRec.color * emission, luma );
 
+					/*
 					float misWeight = scatterRec.pdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
-					float weight = misWeight * phat / scatterRec.pdf;
+					float resamplingWeight = misWeight * phat / scatterRec.pdf;
+					*/
 
-					Sample samp;
+					float resamplingWeight = phat / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
+
+					RisSample samp;
 					samp.path[0] = vec4( ray.origin, 0.0 );
 					samp.path[1] = vec4( hitPoint, 0.0 );
 					samp.path[2] = vec4( lightHitPoint, float( materialIndex ) );
-					samp.weight = weight;
+					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, phat, rand( 18 + i ) );
 
@@ -574,7 +596,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				samp.path[0] = vec4( ray.origin, 0.0 );
 				samp.path[1] = vec4( stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist ), 0.0 );
 				samp.path[2] = pathX2;
-				samp.weight = pathInfo.y;
+				samp.unbiasedContribWeight = pathInfo.y;
 
 				SurfaceRecord surf;
 				{
@@ -632,13 +654,16 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 						if ( materialPdf > 0.0 ) {
 
-							float g =  1.0 / ( lightDist * lightDist );
+							// @todo: do we need this? existing code doesn't seem to care...
+							float g = dot( lightDir, surf.normal );
 
-							fragColor = vec4( surf.emission + sampleColor * emission * samp.weight, 1.0 );
+							fragColor = vec4( surf.emission + sampleColor * emission * samp.unbiasedContribWeight, 1.0 );
 
 						} else {
 
-							// This branch should not occur - it probably means the light is beneath the surface, which we have already checked for.
+							// This branch should not occur - it probably means
+							// the light is beneath the surface, which we have
+							// already checked for.
 
 							fragColor = vec4( surf.emission, 1.0 );
 

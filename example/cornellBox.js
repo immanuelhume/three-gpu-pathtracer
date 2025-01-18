@@ -21,11 +21,14 @@ let pathTracer, renderer, controls;
 let camera, scene;
 let loader;
 let box1, box2;
+let clock;
 
 init();
 
 async function init() {
 	const { tiles, renderScale } = getScaledSettings();
+
+    clock = new THREE.Clock();
 
 	loader = new LoaderElement();
 	loader.attach( document.body );
@@ -171,6 +174,8 @@ function animate() {
     requestAnimationFrame( animate );
 
     pathTracer.renderSample();
+
+    scene.updateMatrixWorld();
 
 	loader.setSamples( pathTracer.nSamples, false );
 	// loader.setSamples( pathTracer.samples, pathTracer.isCompiling );
