@@ -30,6 +30,7 @@ import { PhysicalPathTracingMaterial } from '../pathtracing/PhysicalPathTracingM
 export const Pass = {
 	"GenSample": 0,
 	"ShadePixel": 1,
+	"SpatialReuse": 2,
 	"Dummy": -1,
 }
 
@@ -364,6 +365,18 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#endif
 
+			#if RESTIR_PASS == PASS_SPATIAL_REUSE
+
+			uniform sampler2D pathX2_in;
+			uniform sampler2D pathInfo_in;
+
+			layout(location = 0) out vec4 pathX2_out;
+			layout(location = 1) out vec4 pathInfo_out;
+
+			uniform int M_spatial; // number of spatial samples
+
+			#endif
+
 			#if RESTIR_PASS == PASS_SHADE_PIXEL
 
 			layout(location = 0) out vec4 fragColor;
@@ -565,6 +578,17 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathInfo.y = reservoir.wSum / reservoir.phatOut;
 
 				#endif
+				
+				#if RESTIR_PASS == PASS_SPATIAL_REUSE
+
+				///////////////////
+				// SPATIAL REUSE //
+				///////////////////
+
+				pathX2_out = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathInfo_out = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
+
+				#endif
 
 				#if RESTIR_PASS == PASS_SHADE_PIXEL
 
@@ -657,7 +681,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							// @todo: do we need this? existing code doesn't seem to care...
 							float g = dot( lightDir, surf.normal );
 
-							fragColor = vec4( surf.emission + sampleColor * emission * samp.unbiasedContribWeight, 1.0 );
+							fragColor = vec4( (surf.emission + sampleColor * emission) * samp.unbiasedContribWeight, 1.0 );
 
 						} else {
 
@@ -691,6 +715,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 		this.defines["PASS_GEN_SAMPLE"] = Pass.GenSample;
 		this.defines["PASS_SHADE_PIXEL"] = Pass.ShadePixel;
+		this.defines["PASS_SPATIAL_REUSE"] = Pass.SpatialReuse;
 
 		this.defines["RESTIR_PASS"] = pass;
 

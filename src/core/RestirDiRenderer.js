@@ -1,3 +1,5 @@
+// This file is unused!!!
+
 import { RGBAFormat, FloatType, Color, Vector2, WebGLRenderTarget, NoBlending, NormalBlending, Vector4, NearestFilter } from 'three';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { BlendMaterial } from '../materials/fullscreen/BlendMaterial.js';
@@ -11,11 +13,9 @@ function* renderTask() {
 		_fsQuad,
 		_blendQuad,
 		_samplesQuad,
-		_simpleQuad,
 		_primaryTarget,
 		_blendTargets,
         _samplesTarget,
-		_simpleTarget,
 		_sobolTarget,
 		_subframe,
 		alpha,
@@ -67,9 +67,9 @@ function* renderTask() {
 		// const program2 = _renderer.info.programs[ 2 ];
 		// console.log( program2.getUniforms() );
 
-		_renderer.setRenderTarget( _simpleTarget );
-		_renderer.autoClear = false;
-		_simpleQuad.render( _renderer );
+		// _renderer.setRenderTarget( _simpleTarget );
+		// _renderer.autoClear = false;
+		// _simpleQuad.render( _renderer );
 
         _renderer.setRenderTarget( _samplesTarget );
         _renderer.autoClear = false;
@@ -204,14 +204,15 @@ export class RestirDiRenderer {
 				minFilter: NearestFilter,
 			} ),
 		];
-		this._simpleTarget = new WebGLRenderTarget( 1, 1, {
-			format: RGBAFormat,
-			type: FloatType,
-			magFilter: NearestFilter,
-			minFilter: NearestFilter,
-			count: 2,
-		} );
+		// this._simpleTarget = new WebGLRenderTarget( 1, 1, {
+		// 	format: RGBAFormat,
+		// 	type: FloatType,
+		// 	magFilter: NearestFilter,
+		// 	minFilter: NearestFilter,
+		// 	count: 2,
+		// } );
         this._samplesTarget = new WebGLRenderTarget( 1, 1, {
+
 			format: RGBAFormat,
 			type: FloatType,
 			// internalFormat: "RGBA32F",
@@ -219,7 +220,19 @@ export class RestirDiRenderer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
 			count: 4,
-		} )
+
+		} );
+		this._spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
+
+			format: RGBAFormat,
+			type: FloatType,
+			depthBuffer: false,
+			magFilter: NearestFilter,
+			minFilter: NearestFilter,
+			count: 2,
+
+		} );
+
 
 		// Copy references to each uniform.
 		this._dummyMaterial = new RestirDiMaterial( Pass.Dummy );

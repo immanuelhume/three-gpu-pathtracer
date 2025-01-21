@@ -112,6 +112,7 @@ export class RestirPathTracer {
         this.sharedUniforms.stratifiedTexture.value.init( 20, 24 ); // @todo: what should this be?
 
         this.passGenSample = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample, { blending: THREE.NoBlending } ) );
+        this.passSpatialReuse = new FullScreenQuad( new RestirDiMaterial( Pass.SpatialReuse, { blending: THREE.NoBlending } ) );
         this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
         this.passAverageSamples = new FullScreenQuad( new AverageSamplesMaterial() );
         this.passToneMap = new FullScreenQuad( new ClampedInterpolationMaterial( {
@@ -163,12 +164,25 @@ export class RestirPathTracer {
 			count: 5,
 
 		} );
+        this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
+
+			format: RGBAFormat,
+			type: FloatType,
+			depthBuffer: false,
+			magFilter: NearestFilter,
+			minFilter: NearestFilter,
+            internalFormat: 'RGBA32F',
+			count: 2,
+
+		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );
 
         this.passGenSample.material.uniforms = {
 
             ...this.passGenSample.material.uniforms,
             ...this.sharedUniforms,
+            M_area: { value: 8 },
+            M_bsdf: { value: 1 },
 
         };
         this.passGenSample.material.defines = {
@@ -178,14 +192,22 @@ export class RestirPathTracer {
 
         };
 
-        this.passGenSample.material.uniforms = {
-            
-            ...this.passGenSample.material.uniforms,
+        this.passSpatialReuse.material.uniforms = {
+
+            ...this.passSpatialReuse.material.uniforms,
             ...this.sharedUniforms,
-            M_area: { value: 8 },
-            M_bsdf: { value: 1 },
+            M_spatial: { value: 5 },
+            pathX2_in: { value: this.samplesTarget.textures[ 3 ] },
+            pathInfo_in: { value: this.samplesTarget.textures[ 4 ] },
 
         };
+        this.passSpatialReuse.material.defines = {
+
+            ...this.passSpatialReuse.material.defines,
+            ...this.sharedDefines,
+
+        };
+
         this.passShadePixel.material.uniforms = {
 
             ...this.passShadePixel.material.uniforms,
@@ -193,8 +215,8 @@ export class RestirPathTracer {
             surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
             surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
             surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
-            pathX2: { value: this.samplesTarget.textures[ 3 ] },
-            pathInfo: { value: this.samplesTarget.textures[ 4 ] },
+            pathX2: { value: this.spatialReuseTarget.textures[ 0 ] },
+            pathInfo: { value: this.spatialReuseTarget.textures[ 1 ] },
 
         };
         this.passShadePixel.material.defines = {
@@ -236,6 +258,11 @@ export class RestirPathTracer {
         this.passGenSample.material.onBeforeRender();
         this.renderer.setRenderTarget( this.samplesTarget );
         this.passGenSample.render( this.renderer );
+
+        // spatial reuse
+        this.passSpatialReuse.material.onBeforeRender();
+        this.renderer.setRenderTarget( this.spatialReuseTarget );
+        this.passSpatialReuse.render( this.renderer );
 
         // shade pixel
         this.passShadePixel.material.onBeforeRender();
@@ -324,6 +351,7 @@ export class RestirPathTracer {
         this.pongTarget.setSize( w, h );
         this.pungTarget.setSize( w, h );
         this.samplesTarget.setSize( w, h );
+        this.spatialReuseTarget.setSize( w, h );
 
         this.reset();
 
