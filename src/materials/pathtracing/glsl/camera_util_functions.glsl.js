@@ -81,4 +81,25 @@ export const camera_util_functions = /* glsl */`
 
 	}
 
+	Ray getCameraRay2() {
+
+		vec4 rayOrigin = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
+
+		vec2 ssd = vec2( 1.0 ) / resolution;
+
+		// Jitter the camera ray by finding a uv coordinate at a random sample
+		// around this pixel's UV coordinate for AA
+		vec2 ruv = rand2( 0 );
+		vec2 jitteredUv = vUv + vec2( tentFilter( ruv.x ) * ssd.x, tentFilter( ruv.y ) * ssd.y );
+		vec2 ndc = 2.0 * jitteredUv - vec2( 1.0 );
+		vec4 target = invProjectionMatrix * vec4( ndc, 0.0, 1.0 );
+
+		Ray ray;
+		ray.origin = rayOrigin.xyz / rayOrigin.w;
+		ray.direction = normalize( mat3(cameraWorldMatrix) * target.xyz );
+
+		return ray;
+
+	}
+
 `;

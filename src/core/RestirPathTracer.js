@@ -161,7 +161,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 5,
+			count: 6,
 
 		} );
         this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
@@ -196,9 +196,12 @@ export class RestirPathTracer {
 
             ...this.passSpatialReuse.material.uniforms,
             ...this.sharedUniforms,
-            M_spatial: { value: 5 },
-            pathX2_in: { value: this.samplesTarget.textures[ 3 ] },
-            pathInfo_in: { value: this.samplesTarget.textures[ 4 ] },
+            surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
+            surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
+            surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
+            pathX1_in: { value: this.samplesTarget.textures[ 3 ] },
+            pathX2_in: { value: this.samplesTarget.textures[ 4 ] },
+            pathInfo_in: { value: this.samplesTarget.textures[ 5 ] },
 
         };
         this.passSpatialReuse.material.defines = {
@@ -215,6 +218,7 @@ export class RestirPathTracer {
             surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
             surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
             surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
+            pathX1: { value: this.samplesTarget.textures[ 3 ] },
             pathX2: { value: this.spatialReuseTarget.textures[ 0 ] },
             pathInfo: { value: this.spatialReuseTarget.textures[ 1 ] },
 
