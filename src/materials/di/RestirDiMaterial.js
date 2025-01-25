@@ -31,6 +31,8 @@ export const Pass = {
 	"GenSample": 0,
 	"ShadePixel": 1,
 	"SpatialReuse": 2,
+	"TemporalReuse": 3,
+	"SaveSample": 4,
 	"Dummy": -1,
 }
 
@@ -349,6 +351,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			pathInfo.x: ok
 			pathInfo.y: unbiased contrib weight
 			pathInfo.z: target function evaluated for selected sample
+			pathInfo.w: depth of primary ray
 			
 			ok < 0.0: primary ray missed
 			ok < 1.0: secondary ray missed
@@ -367,12 +370,30 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#endif
 
-			#if RESTIR_PASS == PASS_SPATIAL_REUSE
+			#if RESTIR_PASS == PASS_SPATIAL_REUSE || RESTIR_PASS == PASS_TEMPORAL_REUSE
 
 			uniform sampler2D surfaceHit_faceIndices;
 			uniform sampler2D surfaceHit_barycoord_side;
 			uniform sampler2D surfaceHit_faceNormal_dist;
 			uniform sampler2D pathX1_in;
+			uniform sampler2D pathX2_in;
+			uniform sampler2D pathInfo_in;
+
+			layout(location = 0) out vec4 pathX2_out;
+			layout(location = 1) out vec4 pathInfo_out;
+
+			#endif
+
+			#if RESTIR_PASS == PASS_TEMPORAL_REUSE
+			// Previous frame data
+
+			uniform sampler2D pathX2_in_prev;
+			uniform sampler2D pathInfo_in_prev;
+
+			#endif
+
+			#if RESTIR_PASS == PASS_SAVE_SAMPLE
+
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
 
@@ -421,6 +442,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				SurfaceHit surfaceHit;
 				int hitType = traceScene( ray, surfaceHit );
 
+				pathInfo.w = surfaceHit.dist;
+
 				if ( hitType != SURFACE_HIT ) {
 
 					pathInfo.x = -1.0;
@@ -443,14 +466,17 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					}
 
+					pathX1.w = float( materialIndex );
+
 				}
+
+				vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
+				pathX1.xyz = hitPoint;
 
 				surfaceHit_faceIndices = vec4( surfaceHit.faceIndices );
 				surfaceHit_barycoord_side = vec4( surfaceHit.barycoord, surfaceHit.side );
 				surfaceHit_faceNormal_dist = vec4( surfaceHit.faceNormal, surfaceHit.dist );
 				
-				vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-
 				Reservoir reservoir = initReservoir();
 
 				for ( int i = 0; i < M_area; ++i ) {
@@ -580,10 +606,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX1 = reservoir.sampleOut.path[ 1 ];
 				pathX2 = reservoir.sampleOut.path[ 2 ];
 				pathInfo.y = reservoir.wSum / reservoir.phatOut;
 				pathInfo.z = reservoir.phatOut;
+
+				// @todo: insert visibility pass
 
 				#endif
 				
@@ -594,12 +621,12 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				///////////////////
 
 				// @todo: different spatial reuse strategies might be worth exploring
+				// @todo: different order of passes
 
 				pathX2_out = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
 				pathInfo_out = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 
-				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
-				vec4 pathX1 = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
+				return; // @temp
 
 				if ( pathInfo_out.x < 0.0 ) {
 
@@ -607,6 +634,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					return;
 
 				}
+
+				////////////////////////////START/////////////////////////////////////////
+				/*
+				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
+				vec4 pathX1 = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				Reservoir reservoir = initReservoir();
 
@@ -634,7 +666,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					}
 					
 					vec4 pathX2 = texelFetch( pathX2_in, ivec2( x, y ), 0 );
-					float phat = pathInfo.z;
+					float phat = texelFetch( pathInfo_in, ivec2( x, y ), 0 ).z;
 
 					Material lightMaterial;
 					{
@@ -711,6 +743,254 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2_out = reservoir.sampleOut.path[ 2 ];
 				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
 				pathInfo_out.z = reservoir.phatOut;
+				*/
+				////////////////////////////END/////////////////////////////////////////
+
+				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
+				vec4 pathX1 = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec3 rayDir = normalize( pathX1.xyz - pathX0.xyz );
+
+				uvec4 faceIndices = uvec4( texelFetch( surfaceHit_faceIndices, ivec2( gl_FragCoord.xy ), 0 ) );
+				vec4 barycoord_side = texelFetch( surfaceHit_barycoord_side, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 faceNormal_dist = texelFetch( surfaceHit_faceNormal_dist, ivec2( gl_FragCoord.xy ), 0 );
+
+				SurfaceHit surfaceHit = SurfaceHit( faceIndices, barycoord_side.xyz, faceNormal_dist.xyz, barycoord_side.w, faceNormal_dist.w );
+				SurfaceRecord surf;
+				{
+
+					uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+					Material material = readMaterialInfo( materials, materialIndex );
+
+					int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
+
+				}
+
+				vec4 pathInfo = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
+
+				vec3 normal = surf.normal;
+				float depth = pathInfo.w;
+
+				Reservoir reservoir = initReservoir();
+
+				if ( pathInfo.x > 0.0 ) {
+
+					float misWeight = 1.0 / 9.0;
+					float resamplingWeight = misWeight * pathInfo.z * pathInfo.y;
+
+					RisSample samp;
+					samp.path[0] = pathX0;
+					samp.path[1] = pathX1;
+					samp.path[2] = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+					samp.resamplingWeight = resamplingWeight;
+
+					addSample( reservoir, samp, pathInfo.z, rand( 20 ) );
+
+				}
+
+				for ( int i = 0; i < 9; ++i ) {
+
+					int dx = i % 3 - 1;
+					int dy = i / 3 - 1;
+
+					if ( dx == 0 && dy == 0 ) { continue; }
+
+					float x = gl_FragCoord.x + float( dx );
+					float y = gl_FragCoord.y + float( dy );
+
+					// Pixel is out of viewport
+					if ( x < 0.0 || x >= resolution.x || y < 0.0 || y >= resolution.y ) {
+
+						continue;
+					
+					}
+
+					ivec2 xy = ivec2( x, y );
+					vec4 pathInfo = texelFetch( pathInfo_in, xy, 0 ); // @todo: don't shadow
+
+					if ( pathInfo.x < 1.0 ) {
+
+						// No x2 was picked...
+						continue;
+
+					}
+
+					{
+
+						uvec4 faceIndices = uvec4( texelFetch( surfaceHit_faceIndices, xy, 0 ) );
+						vec4 barycoord_side = texelFetch( surfaceHit_barycoord_side, xy, 0 );
+						vec4 faceNormal_dist = texelFetch( surfaceHit_faceNormal_dist, xy, 0 );
+
+						SurfaceHit surfaceHit = SurfaceHit( faceIndices, barycoord_side.xyz, faceNormal_dist.xyz, barycoord_side.w, faceNormal_dist.w );
+						SurfaceRecord surf;
+						{
+
+							uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+							Material material = readMaterialInfo( materials, materialIndex );
+
+							int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
+
+						}
+
+						vec3 _normal = surf.normal;
+						float _depth = pathInfo.w;
+
+						bool normalOk = dot( normal, _normal ) > 0.96;
+						bool depthOk = _depth < 1.1 * depth && _depth > 0.9 * depth;
+
+						if ( !normalOk || !depthOk ) {
+
+							// Reject this neighbour.
+							continue;
+
+						}
+
+					}
+
+					vec4 pathX2 = texelFetch( pathX2_in, xy, 0 );
+					vec3 lightDir = normalize( pathX2.xyz - pathX1.xyz );
+
+					Material lightMaterial;
+					{
+						uint materialIndex = uint( pathX2.w );
+						lightMaterial = readMaterialInfo( materials, materialIndex );
+					}
+					vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+					vec3 sampleColor;
+					float materialPdf = bsdfResult( -rayDir, lightDir, surf, sampleColor );
+
+					float phat = dot( sampleColor * emission, luma );
+
+					float misWeight = 1.0 / 9.0;
+					float unbiasedContribWeight = pathInfo.y;
+					float resamplingWeight = misWeight * phat * unbiasedContribWeight;
+
+					RisSample samp;
+					samp.path[0] = pathX0;
+					samp.path[1] = pathX1;
+					samp.path[2] = pathX2;
+					samp.resamplingWeight = resamplingWeight;
+
+					addSample( reservoir, samp, phat, rand( 21 + i ) );
+
+				}
+
+				if ( !reservoir.valid ) {
+
+					return;
+
+				}
+
+				pathX2_out = reservoir.sampleOut.path[ 2 ];
+				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
+
+				#endif
+
+				#if RESTIR_PASS == PASS_TEMPORAL_REUSE
+
+				////////////////////
+				// TEMPORAL REUSE //
+				////////////////////
+
+				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
+				vec4 pathX1 = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX2 = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathInfo = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
+
+				pathX2_out = pathX2; pathInfo_out = pathInfo; // "default values"
+
+				vec4 pathX2_prev = texelFetch( pathX2_in_prev, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( gl_FragCoord.xy ), 0 );
+
+				if ( pathInfo_prev.x < 1.0 ) {
+
+					// No sample from previous frame.
+					return;
+
+				}
+
+				Reservoir reservoir = initReservoir();
+
+				float misWeight = 0.5; // @todo: check
+
+				if ( pathInfo.x > 0.0 ) {
+
+					float resamplingWeight = misWeight * pathInfo.z * pathInfo.y;
+
+					RisSample samp;
+					samp.path[0] = pathX0;
+					samp.path[1] = pathX1;
+					samp.path[2] = pathX2;
+					samp.resamplingWeight = resamplingWeight;
+
+					addSample( reservoir, samp, pathInfo.z, rand( 22 ) );
+
+				}
+
+				if ( pathInfo_prev.x > 0.0 ) {
+
+					// compute target function for previous frame's sample
+					uvec4 faceIndices = uvec4( texelFetch( surfaceHit_faceIndices, ivec2( gl_FragCoord.xy ), 0 ) );
+					vec4 barycoord_side = texelFetch( surfaceHit_barycoord_side, ivec2( gl_FragCoord.xy ), 0 );
+					vec4 faceNormal_dist = texelFetch( surfaceHit_faceNormal_dist, ivec2( gl_FragCoord.xy ), 0 );
+
+					SurfaceHit surfaceHit = SurfaceHit( faceIndices, barycoord_side.xyz, faceNormal_dist.xyz, barycoord_side.w, faceNormal_dist.w );
+					SurfaceRecord surf;
+					{
+
+						uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+						Material material = readMaterialInfo( materials, materialIndex );
+
+						int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
+
+					}
+
+					vec3 lightDir = normalize( pathX2_prev.xyz - pathX1.xyz );
+					vec3 rayDir = normalize( pathX1.xyz - pathX0.xyz );
+
+					Material lightMaterial;
+					{
+						uint materialIndex = uint( pathX2_prev.w );
+						lightMaterial = readMaterialInfo( materials, materialIndex );
+					}
+					vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+					vec3 sampleColor;
+					float materialPdf = bsdfResult( -rayDir, lightDir, surf, sampleColor );
+
+					float phat = dot( sampleColor * emission, luma );
+
+					float resamplingWeight = misWeight * phat * pathInfo_prev.y;
+
+					RisSample samp;
+					samp.path[0] = pathX0;
+					samp.path[1] = pathX1;
+					samp.path[2] = pathX2_prev;
+					samp.resamplingWeight = resamplingWeight;
+
+					addSample( reservoir, samp, phat, rand( 23 ) );
+
+				}
+
+				if ( !reservoir.valid ) {
+
+					return;
+
+				}
+
+				pathX2_out = reservoir.sampleOut.path[ 2 ];
+				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
+
+				#endif
+
+				#if RESTIR_PASS == PASS_SAVE_SAMPLE
+
+				//////////////////
+				// SAVE SAMPLES //
+				//////////////////
+
+				pathX2_out = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathInfo_out = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				#endif
 
@@ -841,6 +1121,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 		this.defines["PASS_GEN_SAMPLE"] = Pass.GenSample;
 		this.defines["PASS_SHADE_PIXEL"] = Pass.ShadePixel;
 		this.defines["PASS_SPATIAL_REUSE"] = Pass.SpatialReuse;
+		this.defines["PASS_TEMPORAL_REUSE"] = Pass.TemporalReuse;
+		this.defines["PASS_SAVE_SAMPLE"] = Pass.SaveSample;
 
 		this.defines["RESTIR_PASS"] = pass;
 

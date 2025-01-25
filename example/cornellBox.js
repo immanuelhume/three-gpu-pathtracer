@@ -54,12 +54,16 @@ async function init() {
 
 	// camera
 	camera = new PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.025, 500 );
-	camera.position.set( 0, 2, 16 );
-    camera.lookAt( 0, 2, 0 );
+	// camera.position.set( 0, 2, 16 );
+    // camera.lookAt( 0, 2, 0 );
+	camera.position.set( -2, 3, 6 );
 
 	controls = new OrbitControls( camera, renderer.domElement );
 	controls.addEventListener( 'change', () => pathTracer.updateCamera() );
 	controls.update();
+
+	controls.target.set( 2, 0, 0 );
+	camera.lookAt( controls.target );
 
     // scene
 	scene = new Scene();
@@ -123,12 +127,12 @@ async function init() {
     const box2Mat = new THREE.MeshPhysicalMaterial({ emissive: 0x88ffff, emissiveIntensity: 1.0 });
     box2 = new THREE.Mesh(box2Geom, box2Mat);
     box2.position.z = 2.5;
-    box2.position.y = 0.6;
+    box2.position.y = 1.6;
     box2.position.x = 0.7;
 
-    box2.position.z = 2.0;
-    box2.position.y = 0.7;
-    box2.position.x = 1.3;
+    // box2.position.z = 2.0;
+    // box2.position.y = 0.7;
+    // box2.position.x = 1.3;
 
     // box2.rotateY(-Math.PI/7);
 

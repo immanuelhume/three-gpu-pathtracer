@@ -113,6 +113,8 @@ export class RestirPathTracer {
 
         this.passGenSample = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample, { blending: THREE.NoBlending } ) );
         this.passSpatialReuse = new FullScreenQuad( new RestirDiMaterial( Pass.SpatialReuse, { blending: THREE.NoBlending } ) );
+        this.passTemporalReuse = new FullScreenQuad( new RestirDiMaterial( Pass.TemporalReuse, { blending: THREE.NoBlending } ) );
+        this.passSaveSample = new FullScreenQuad( new RestirDiMaterial( Pass.SaveSample, { blending: THREE.NoBlending } ) );
         this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
         this.passAverageSamples = new FullScreenQuad( new AverageSamplesMaterial() );
         this.passToneMap = new FullScreenQuad( new ClampedInterpolationMaterial( {
@@ -175,6 +177,28 @@ export class RestirPathTracer {
 			count: 2,
 
 		} );
+        this.temporalReuseTargetA = new WebGLRenderTarget( 1, 1, {
+
+			format: RGBAFormat,
+			type: FloatType,
+			depthBuffer: false,
+			magFilter: NearestFilter,
+			minFilter: NearestFilter,
+            internalFormat: 'RGBA32F',
+			count: 2,
+
+		} );
+        this.temporalReuseTargetB = new WebGLRenderTarget( 1, 1, {
+
+			format: RGBAFormat,
+			type: FloatType,
+			depthBuffer: false,
+			magFilter: NearestFilter,
+			minFilter: NearestFilter,
+            internalFormat: 'RGBA32F',
+			count: 2,
+
+		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );
 
         this.passGenSample.material.uniforms = {
@@ -211,6 +235,25 @@ export class RestirPathTracer {
 
         };
 
+        this.passTemporalReuse.material.uniforms = {
+
+            ...this.passSpatialReuse.material.uniforms,
+            ...this.sharedUniforms,
+            surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
+            surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
+            surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
+            pathX1_in: { value: this.samplesTarget.textures[ 3 ] },
+            pathX2_in: { value: this.spatialReuseTarget.textures[ 0 ] },
+            pathInfo_in: { value: this.spatialReuseTarget.textures[ 1 ] },
+
+        };
+        this.passTemporalReuse.material.defines = {
+
+            ...this.passTemporalReuse.material.defines,
+            ...this.sharedDefines,
+
+        };
+
         this.passShadePixel.material.uniforms = {
 
             ...this.passShadePixel.material.uniforms,
@@ -219,8 +262,8 @@ export class RestirPathTracer {
             surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
             surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
             pathX1: { value: this.samplesTarget.textures[ 3 ] },
-            pathX2: { value: this.spatialReuseTarget.textures[ 0 ] },
-            pathInfo: { value: this.spatialReuseTarget.textures[ 1 ] },
+            pathX2: { value: this.temporalReuseTargetA.textures[ 0 ] },
+            pathInfo: { value: this.temporalReuseTargetA.textures[ 1 ] },
 
         };
         this.passShadePixel.material.defines = {
@@ -268,7 +311,23 @@ export class RestirPathTracer {
         this.renderer.setRenderTarget( this.spatialReuseTarget );
         this.passSpatialReuse.render( this.renderer );
 
+        // temporal reuse
+        this.passTemporalReuse.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetB.textures[ 0 ] };
+        this.passTemporalReuse.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetB.textures[ 1 ] };
+        this.passTemporalReuse.material.onBeforeRender();
+        this.renderer.setRenderTarget( this.temporalReuseTargetA );
+        this.passTemporalReuse.render( this.renderer );
+
+        // save current sample
+        this.passSaveSample.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetA.textures[ 0 ] };
+        this.passSaveSample.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetA.textures[ 1 ] };
+        this.passSaveSample.material.onBeforeRender();
+        this.renderer.setRenderTarget( this.temporalReuseTargetB );
+        this.passSaveSample.render( this.renderer );
+
         // shade pixel
+        this.passShadePixel.material.uniforms.pathX2 = { value: this.temporalReuseTargetA.textures[ 0 ] };
+        this.passShadePixel.material.uniforms.pathInfo = { value: this.temporalReuseTargetA.textures[ 1 ] };
         this.passShadePixel.material.onBeforeRender();
         this.renderer.setRenderTarget( this.pingTarget );
         this.passShadePixel.render( this.renderer );
@@ -290,6 +349,7 @@ export class RestirPathTracer {
         this.nSamples++;
 
         [ this.pongTarget, this.pungTarget ] = [ this.pungTarget, this.pongTarget ];
+        // [ this.temporalReuseTargetA, this.temporalReuseTargetB ] = [ this.temporalReuseTargetB, this.temporalReuseTargetA ];
 
     }
 
@@ -356,6 +416,8 @@ export class RestirPathTracer {
         this.pungTarget.setSize( w, h );
         this.samplesTarget.setSize( w, h );
         this.spatialReuseTarget.setSize( w, h );
+        this.temporalReuseTargetA.setSize( w, h );
+        this.temporalReuseTargetB.setSize( w, h );
 
         this.reset();
 
@@ -461,6 +523,8 @@ export class RestirPathTracer {
 
     doReset() {
 
+        console.log( "reset happened" );
+
         const ogRenderTarget = this.renderer.getRenderTarget();
         const ogClearAlpha = this.renderer.getClearAlpha();
         const ogClearColor = new THREE.Color();
@@ -479,6 +543,18 @@ export class RestirPathTracer {
         this.renderer.clearColor();
 
         this.renderer.setRenderTarget( this.samplesTarget );
+        this.renderer.setClearColor( 0, 0 );
+        this.renderer.clearColor();
+
+        this.renderer.setRenderTarget( this.spatialReuseTarget );
+        this.renderer.setClearColor( 0, 0 );
+        this.renderer.clearColor();
+
+        this.renderer.setRenderTarget( this.temporalReuseTargetA );
+        this.renderer.setClearColor( 0, 0 );
+        this.renderer.clearColor();
+
+        this.renderer.setRenderTarget( this.temporalReuseTargetB );
         this.renderer.setClearColor( 0, 0 );
         this.renderer.clearColor();
 
