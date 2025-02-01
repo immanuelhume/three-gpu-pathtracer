@@ -71,9 +71,16 @@ export class RestirPathTracer {
             transmissiveBounces: { value: 10 },
             filterGlossyFactor: { value: 0 },
 
+            // restir details
+            hasPrevFrame: { value: 0 },
+
             // camera uniforms
             physicalCamera: { value: new PhysicalCameraUniform() },
             cameraWorldMatrix: { value: new Matrix4() },
+            invCameraWorldMatrix: { value: new Matrix4() },       // current frame's view mat
+            invCameraWorldMatrixPrev: { value: new Matrix4() },   // previous frame's view mat
+            cameraProjectionMatrix: { value: new Matrix4() },     // current frame's proj mat
+            cameraProjectionMatrixPrev: { value: new Matrix4() }, // previous frame's proj mat
             invProjectionMatrix: { value: new Matrix4() },
 
             // scene uniforms
@@ -112,7 +119,7 @@ export class RestirPathTracer {
         this.sharedUniforms.stratifiedTexture.value.init( 20, 24 ); // @todo: what should this be?
 
         this.passGenSample = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample, { blending: THREE.NoBlending } ) );
-        this.passSpatialReuse = new FullScreenQuad( new RestirDiMaterial( Pass.SpatialReuse, { blending: THREE.NoBlending } ) );
+        // this.passSpatialReuse = new FullScreenQuad( new RestirDiMaterial( Pass.SpatialReuse, { blending: THREE.NoBlending } ) );
         this.passTemporalReuse = new FullScreenQuad( new RestirDiMaterial( Pass.TemporalReuse, { blending: THREE.NoBlending } ) );
         this.passSaveSample = new FullScreenQuad( new RestirDiMaterial( Pass.SaveSample, { blending: THREE.NoBlending } ) );
         this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
@@ -216,9 +223,28 @@ export class RestirPathTracer {
 
         };
 
-        this.passSpatialReuse.material.uniforms = {
+        // this.passSpatialReuse.material.uniforms = {
 
-            ...this.passSpatialReuse.material.uniforms,
+        //     ...this.passSpatialReuse.material.uniforms,
+        //     ...this.sharedUniforms,
+        //     surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
+        //     surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
+        //     surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
+        //     pathX1_in: { value: this.samplesTarget.textures[ 3 ] },
+        //     pathX2_in: { value: this.samplesTarget.textures[ 4 ] },
+        //     pathInfo_in: { value: this.samplesTarget.textures[ 5 ] },
+
+        // };
+        // this.passSpatialReuse.material.defines = {
+
+        //     ...this.passSpatialReuse.material.defines,
+        //     ...this.sharedDefines,
+
+        // };
+
+        this.passTemporalReuse.material.uniforms = {
+
+            ...this.passTemporalReuse.material.uniforms,
             ...this.sharedUniforms,
             surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
             surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
@@ -226,25 +252,6 @@ export class RestirPathTracer {
             pathX1_in: { value: this.samplesTarget.textures[ 3 ] },
             pathX2_in: { value: this.samplesTarget.textures[ 4 ] },
             pathInfo_in: { value: this.samplesTarget.textures[ 5 ] },
-
-        };
-        this.passSpatialReuse.material.defines = {
-
-            ...this.passSpatialReuse.material.defines,
-            ...this.sharedDefines,
-
-        };
-
-        this.passTemporalReuse.material.uniforms = {
-
-            ...this.passSpatialReuse.material.uniforms,
-            ...this.sharedUniforms,
-            surfaceHit_faceIndices: { value: this.samplesTarget.textures[ 0 ] },
-            surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
-            surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
-            pathX1_in: { value: this.samplesTarget.textures[ 3 ] },
-            pathX2_in: { value: this.spatialReuseTarget.textures[ 0 ] },
-            pathInfo_in: { value: this.spatialReuseTarget.textures[ 1 ] },
 
         };
         this.passTemporalReuse.material.defines = {
@@ -307,9 +314,9 @@ export class RestirPathTracer {
         this.passGenSample.render( this.renderer );
 
         // spatial reuse
-        this.passSpatialReuse.material.onBeforeRender();
-        this.renderer.setRenderTarget( this.spatialReuseTarget );
-        this.passSpatialReuse.render( this.renderer );
+        // this.passSpatialReuse.material.onBeforeRender();
+        // this.renderer.setRenderTarget( this.spatialReuseTarget );
+        // this.passSpatialReuse.render( this.renderer );
 
         // temporal reuse
         this.passTemporalReuse.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetB.textures[ 0 ] };
@@ -346,10 +353,17 @@ export class RestirPathTracer {
         this.passToneMap.material.uniforms.map.value = this.pongTarget.texture;
         this.passToneMap.render( this.renderer );
 
-        this.nSamples++;
+        // this.nSamples++;
 
         [ this.pongTarget, this.pungTarget ] = [ this.pungTarget, this.pongTarget ];
         [ this.temporalReuseTargetA, this.temporalReuseTargetB ] = [ this.temporalReuseTargetB, this.temporalReuseTargetA ];
+
+        this.sharedUniforms.invCameraWorldMatrixPrev.value.copy( this.camera.matrixWorldInverse );
+        this.sharedUniforms.cameraProjectionMatrixPrev.value.copy( this.camera.projectionMatrix );
+        this.sharedUniforms.hasPrevFrame.value = 1;
+
+        // console.log( "view matrix:", this.sharedUniforms.invCameraWorldMatrixPrev.value );
+        // console.log( "proj matrix:", this.sharedUniforms.cameraProjectionMatrixPrev.value );
 
     }
 
@@ -358,6 +372,8 @@ export class RestirPathTracer {
         this.camera.updateMatrixWorld();
 
         this.sharedUniforms.cameraWorldMatrix.value.copy( this.camera.matrixWorld );
+        this.sharedUniforms.invCameraWorldMatrix.value.copy( this.camera.matrixWorldInverse );
+        this.sharedUniforms.cameraProjectionMatrix.value.copy( this.camera.projectionMatrix );
         this.sharedUniforms.invProjectionMatrix.value.copy( this.camera.projectionMatrixInverse );
         this.sharedUniforms.physicalCamera.value.updateFrom( this.camera );
 
@@ -383,7 +399,7 @@ export class RestirPathTracer {
 		this.passShadePixel.material.setDefine( 'CAMERA_TYPE', cameraType );
         this.passGenSample.material.setDefine( 'CAMERA_TYPE', cameraType );
 
-        this.reset();
+        // this.reset();
 
     }
 

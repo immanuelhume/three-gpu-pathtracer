@@ -102,4 +102,20 @@ export const camera_util_functions = /* glsl */`
 
 	}
 
+	vec2 getPrevFrameUV( vec4 worldCurr ) {
+
+		vec4 clipPrev = cameraProjectionMatrixPrev * invCameraWorldMatrixPrev * worldCurr;
+		clipPrev /= clipPrev.w;
+		vec2 uv = 0.5 * clipPrev.xy + 0.5;
+		return uv;
+
+	}
+
+	vec2 getPrevFrameFragCoord( vec4 worldCurr ) {
+
+		vec2 uv = getPrevFrameUV( worldCurr );
+		return uv * resolution;
+
+	}
+
 `;

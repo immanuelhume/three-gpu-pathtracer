@@ -227,8 +227,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			#endif
 
 			// camera
-			uniform mat4 cameraWorldMatrix;
+			uniform mat4 invCameraWorldMatrix; // view matrix
+			uniform mat4 invCameraWorldMatrixPrev;
+			uniform mat4 cameraWorldMatrix; // view matrix inverse
+			uniform mat4 cameraProjectionMatrix;
+			uniform mat4 cameraProjectionMatrixPrev;
 			uniform mat4 invProjectionMatrix;
+
 			#if FEATURE_DOF
 
 			uniform PhysicalCamera physicalCamera;
@@ -291,6 +296,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			${ RenderGLSL.get_surface_record_function }
 
 			// restir
+
+			uniform int hasPrevFrame;
 
 			const vec3 luma = vec3( 0.2126, 0.7152, 0.0722 );
 
@@ -473,9 +480,17 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				#if RESTIR_PASS == PASS_GEN_SAMPLE
 
-				/////////////////////
-				// GENERATE SAMPLE //
-				/////////////////////
+				////////////////////////////////////////////////////////////////
+				// GENERATE SAMPLE
+				//
+				// We perform MIS+RIS on simple sampling procedures. We generate
+				// M_area samples of random points on area lights, and M_bsdf
+				// samples of directions from the hit point's BSDF.
+				//
+				// The target function is L dot N * f dot E, where L dot N is the
+				// geometry term, f is the BSDF spectral response, and E is the
+				// emissive intensity.
+				////////////////////////////////////////////////////////////////
 
 				// Initialize outputs
 				surfaceHit_faceIndices     = vec4( 0.0, 0.0, 0.0, 0.0 );
@@ -658,9 +673,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				
 				#if RESTIR_PASS == PASS_SPATIAL_REUSE
 
-				///////////////////
-				// SPATIAL REUSE //
-				///////////////////
+				////////////////////////////////////////////////////////////////
+				// SPATIAL REUSE
+				//
+				// Causes artifacts - unused for now.
+				////////////////////////////////////////////////////////////////
 
 				// @todo: different spatial reuse strategies might be worth exploring
 				// @todo: different order of passes
@@ -676,117 +693,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					return;
 
 				}
-
-				////////////////////////////START/////////////////////////////////////////
-				/*
-				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
-				vec4 pathX1 = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
-
-				Reservoir reservoir = initReservoir();
-
-				for ( int i = 0; i < 9; ++i ) {
-
-					int dx = i % 3 - 1;
-					int dy = i / 3 - 1;
-
-					float x = gl_FragCoord.x + float( dx );
-					float y = gl_FragCoord.y + float( dy );
-
-					// Pixel is out of viewport
-					if ( x < 0.0 || x >= resolution.x || y < 0.0 || y >= resolution.y ) {
-
-						continue;
-					
-					}
-
-					vec4 pathInfo = texelFetch( pathInfo_in, ivec2( x, y ), 0 );
-					if ( pathInfo.x < 1.0 ) {
-
-						// No x2 was picked...
-						continue;
-
-					}
-					
-					vec4 pathX2 = texelFetch( pathX2_in, ivec2( x, y ), 0 );
-					float phat = texelFetch( pathInfo_in, ivec2( x, y ), 0 ).z;
-
-					Material lightMaterial;
-					{
-						uint materialIndex = uint( pathX2.w );
-						lightMaterial = readMaterialInfo( materials, materialIndex );
-					}
-					vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
-
-					float phatSum = 0.0;
-
-					for ( int j = 0; j < 9; ++j ) {
-
-						int dx2 = j % 3 - 1;
-						int dy2 = j / 3 - 1;
-						ivec2 offset = ivec2( dx2, dy2 );
-
-						float x2 = gl_FragCoord.x + float( dx2 );
-						float y2 = gl_FragCoord.y + float( dy2 );
-
-						// Pixel is out of viewport
-						if ( x2 < 0.0 || x2 >= resolution.x || y2 < 0.0 || y2 >= resolution.y ) {
-
-							continue;
-						
-						}
-
-						uvec4 faceIndices = uvec4( texelFetch( surfaceHit_faceIndices, ivec2( gl_FragCoord.xy ) + offset, 0 ) );
-						vec4 barycoord_side = texelFetch( surfaceHit_barycoord_side, ivec2( gl_FragCoord.xy ) + offset, 0 );
-						vec4 faceNormal_dist = texelFetch( surfaceHit_faceNormal_dist, ivec2( gl_FragCoord.xy ) + offset, 0 );
-
-						SurfaceHit surfaceHit = SurfaceHit( faceIndices, barycoord_side.xyz, faceNormal_dist.xyz, barycoord_side.w, faceNormal_dist.w );
-						SurfaceRecord surf;
-						{
-
-							uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-							Material material = readMaterialInfo( materials, materialIndex );
-
-							int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
-
-						}
-
-
-						vec4 pathX1 = texelFetch( pathX1_in, ivec2( x2, y2 ), 0 );
-						vec3 rayDir = normalize( pathX1.xyz - pathX0.xyz );
-						vec3 lightDir = normalize( pathX2.xyz - pathX1.xyz );
-
-						vec3 sampleColor;
-						float materialPdf = bsdfResult( -rayDir, lightDir, surf, sampleColor );
-
-						float phat = dot( sampleColor * emission, luma );
-						phatSum += phat;
-
-					}
-
-					float misWeight = phat / phatSum; // generalized balance heuristic
-					float resamplingWeight = misWeight * phat * pathInfo.y;
-
-					RisSample samp;
-					samp.path[0] = pathX0;
-					samp.path[1] = pathX1;
-					samp.path[2] = pathX2;
-					samp.resamplingWeight = resamplingWeight;
-
-					addSample( reservoir, samp, phat, rand( 19 + i ) );
-
-				}
-
-				if ( !reservoir.valid ) {
-
-					return;
-
-				}
-
-				pathX2_out = reservoir.sampleOut.path[ 2 ];
-				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
-				pathInfo_out.z = reservoir.phatOut;
-				*/
-				////////////////////////////END/////////////////////////////////////////
 
 				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
 				vec4 pathX1 = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
@@ -947,8 +853,18 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2_out   = pathX2;
 				pathInfo_out = pathInfo;
 
-				vec4 pathX2_prev   = texelFetch( pathX2_in_prev, ivec2( gl_FragCoord.xy ), 0 );
-				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( gl_FragCoord.xy ), 0 );
+				if ( hasPrevFrame == 0 ) return;
+
+				vec4 clip_prev = cameraProjectionMatrix * invCameraWorldMatrix * vec4( pathX1.xyz, 1.0 );
+				clip_prev /= clip_prev.w;
+				vec2 uv_prev = 0.5 * clip_prev.xy + 0.5;
+				vec2 fragCoord_prev = uv_prev * resolution;
+
+				vec4 pathX2_prev   = texelFetch( pathX2_in_prev, ivec2( fragCoord_prev ), 0 );
+				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( fragCoord_prev ), 0 );
+
+				// vec4 pathX2_prev   = texelFetch( pathX2_in_prev, ivec2( gl_FragCoord.xy ), 0 );
+				// vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( gl_FragCoord.xy ), 0 );
 
 				bool hasPrevOnly = pathInfo_prev.x > 0.0 && pathInfo.x < 1.0;
 				bool hasCurrOnly = pathInfo_prev.x < 1.0 && pathInfo.x > 0.0;

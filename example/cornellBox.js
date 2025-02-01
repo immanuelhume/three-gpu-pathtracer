@@ -12,6 +12,8 @@ import {
 } from 'three';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { FlyControls } from 'three/examples/jsm/controls/FlyControls.js';
+import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import { ParallelMeshBVHWorker } from 'three-mesh-bvh/src/workers/ParallelMeshBVHWorker.js';
 import { getScaledSettings } from './utils/getScaledSettings.js';
 import { LoaderElement } from './utils/LoaderElement.js';
@@ -22,6 +24,10 @@ let camera, scene;
 let loader;
 let box1, box2;
 let clock;
+
+const moveSpeed = 0.1;
+const move = { forward: 0, backward: 0, left: 0, right: 0 };
+
 
 init();
 
@@ -58,12 +64,34 @@ async function init() {
     // camera.lookAt( 0, 2, 0 );
 	camera.position.set( -2, 3, 6 );
 
-	controls = new OrbitControls( camera, renderer.domElement );
-	controls.addEventListener( 'change', () => pathTracer.updateCamera() );
-	controls.update();
+	// controls = new FlyControls( camera, renderer.domElement );
+	controls = new PointerLockControls( camera, renderer.domElement );
+    document.addEventListener( "click", () => controls.lock() );
 
-	controls.target.set( 2, 0, 0 );
-	camera.lookAt( controls.target );
+    document.addEventListener('keydown', (event) => {
+        switch (event.code) {
+            case 'KeyW': move.forward = 1; break;
+            case 'KeyS': move.backward = 1; break;
+            case 'KeyA': move.left = 1; break;
+            case 'KeyD': move.right = 1; break;
+        }
+    });
+
+    document.addEventListener('keyup', (event) => {
+        switch (event.code) {
+            case 'KeyW': move.forward = 0; break;
+            case 'KeyS': move.backward = 0; break;
+            case 'KeyA': move.left = 0; break;
+            case 'KeyD': move.right = 0; break;
+        }
+    });
+
+	// controls = new OrbitControls( camera, renderer.domElement );
+	controls.addEventListener( 'change', () => pathTracer.updateCamera() );
+	// controls.update();
+
+	// controls.target.set( 2, 0, 0 );
+	// camera.lookAt( controls.target );
 
     // scene
 	scene = new Scene();
@@ -75,7 +103,7 @@ async function init() {
     const floorMaterial = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, clearcoat: 1.0, roughness: 0.5, metalness: 0.5 });
     const leftMaterial = new THREE.MeshPhysicalMaterial({ color: 0xff0000, side: THREE.DoubleSide });
     const rightMaterial = new THREE.MeshPhysicalMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
-    const backMaterial = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide });
+    const backMaterial = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, clearcoat: 1.0, roughness: 0.5, metalness: 0.5 });
 
     const floor = new THREE.Mesh(plane, floorMaterial);
     floor.position.z = 2;
@@ -160,6 +188,16 @@ async function init() {
 	onResize();
 	window.addEventListener( 'resize', onResize );
 	animate();
+
+    const dpr = window.devicePixelRatio;
+    const size = new THREE.Vector2();
+    renderer.getSize(size);
+
+    const fragmentWidth = size.width * dpr;
+    const fragmentHeight = size.height * dpr;
+
+    console.log(`Fragment resolution: ${fragmentWidth} x ${fragmentHeight}`);
+
 }
 
 function onResize() {
@@ -176,6 +214,20 @@ function onResize() {
 function animate() {
 
     requestAnimationFrame( animate );
+
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    
+    if (move.forward) camera.position.addScaledVector(direction, moveSpeed);
+    if (move.backward) camera.position.addScaledVector(direction, -moveSpeed);
+    
+    const right = new THREE.Vector3();
+    right.crossVectors(direction, camera.up).normalize();
+    
+    if (move.left) camera.position.addScaledVector(right, -moveSpeed);
+    if (move.right) camera.position.addScaledVector(right, moveSpeed);
+
+    pathTracer.updateCamera();
 
     pathTracer.renderSample();
 
