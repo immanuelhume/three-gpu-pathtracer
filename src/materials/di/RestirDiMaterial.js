@@ -352,6 +352,23 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			}
 
+
+			vec2 getPrevFrameUV( vec4 worldCurr ) {
+
+				vec4 clipPrev = cameraProjectionMatrixPrev * invCameraWorldMatrixPrev * worldCurr;
+				clipPrev /= clipPrev.w;
+				vec2 uv = 0.5 * clipPrev.xy + 0.5;
+				return uv;
+
+			}
+
+			vec2 getPrevFrameFragCoord( vec4 worldCurr ) {
+
+				vec2 uv = getPrevFrameUV( worldCurr );
+				return uv * resolution;
+
+			}
+
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
 			/*
@@ -855,7 +872,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hasPrevFrame == 0 ) return;
 
-				vec4 clip_prev = cameraProjectionMatrix * invCameraWorldMatrix * vec4( pathX1.xyz, 1.0 );
+				vec4 clip_prev = cameraProjectionMatrixPrev * invCameraWorldMatrixPrev * vec4( pathX1.xyz, 1.0 );
 				clip_prev /= clip_prev.w;
 				vec2 uv_prev = 0.5 * clip_prev.xy + 0.5;
 				vec2 fragCoord_prev = uv_prev * resolution;

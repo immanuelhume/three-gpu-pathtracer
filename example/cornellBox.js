@@ -61,8 +61,8 @@ async function init() {
 	// camera
 	camera = new PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.025, 500 );
 	// camera.position.set( 0, 2, 16 );
-    // camera.lookAt( 0, 2, 0 );
-	camera.position.set( -2, 3, 6 );
+	camera.position.set( -3, 2, 8 );
+    camera.lookAt( 2, 2, 0 );
 
 	// controls = new FlyControls( camera, renderer.domElement );
 	controls = new PointerLockControls( camera, renderer.domElement );
@@ -149,7 +149,7 @@ async function init() {
     box1.position.x = -0.7;
     box1.rotateY(Math.PI/9);
 
-    const box2Geom = new THREE.BoxGeometry(1.2, 1.2);
+    const box2Geom = new THREE.BoxGeometry( 1.0, 1.0, 1.0 );
     // const box2Geom = new THREE.SphereGeometry(0.6);
     // const box2Geom = new THREE.CylinderGeometry(0.6, 0.6, 1.2);
     const box2Mat = new THREE.MeshPhysicalMaterial({ emissive: 0x88ffff, emissiveIntensity: 1.0 });
