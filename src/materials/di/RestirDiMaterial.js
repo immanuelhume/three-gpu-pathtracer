@@ -895,9 +895,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					addSample( reservoir, samp, phat, rand( 23 ) );
 
-				}
-
-				if ( hasBoth ) {
+				} else if ( hasBoth ) {
 
 					float misWeightCurr = 0.5;
 					float misWeightPrev = 1.0 - misWeightCurr;
@@ -967,7 +965,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// SHADE POINT
 				//
 				// Basic stuff. Given the selected sample and G buffer info,
-				// shade the point.
+				// trace ray and shade the point.
 				////////////////////////////////////////////////////////////////
 
 				fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
