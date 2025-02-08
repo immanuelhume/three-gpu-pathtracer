@@ -26,7 +26,7 @@ let box1, box2;
 let clock;
 
 const moveSpeed = 0.1;
-const move = { forward: 0, backward: 0, left: 0, right: 0 };
+const move = { forward: 0, backward: 0, left: 0, right: 0, up: 0, down: 0 };
 
 
 init();
@@ -74,6 +74,8 @@ async function init() {
             case 'KeyS': move.backward = 1; break;
             case 'KeyA': move.left = 1; break;
             case 'KeyD': move.right = 1; break;
+            case 'KeyE': move.up = 1; break;
+            case 'KeyQ': move.down = 1; break;
         }
     });
 
@@ -83,6 +85,8 @@ async function init() {
             case 'KeyS': move.backward = 0; break;
             case 'KeyA': move.left = 0; break;
             case 'KeyD': move.right = 0; break;
+            case 'KeyE': move.up = 0; break;
+            case 'KeyQ': move.down = 0; break;
         }
     });
 
@@ -223,9 +227,12 @@ function animate() {
     
     const right = new THREE.Vector3();
     right.crossVectors(direction, camera.up).normalize();
-    
+
     if (move.left) camera.position.addScaledVector(right, -moveSpeed);
     if (move.right) camera.position.addScaledVector(right, moveSpeed);
+
+    if (move.up) camera.position.addScaledVector(camera.up, moveSpeed);
+    if (move.down) camera.position.addScaledVector(camera.up, -moveSpeed);
 
     pathTracer.updateCamera();
 
