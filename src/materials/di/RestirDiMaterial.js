@@ -909,6 +909,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec2 uv_prev = 0.5 * clip_prev.xy + 0.5;
 				vec2 fragCoord_prev = uv_prev * resolution;
 
+				vec4 pathX1_prev        = texelFetch( pathX1_in_prev, ivec2( fragCoord_prev ), 0 );
 				vec4 pathX2_prev        = texelFetch( pathX2_in_prev, ivec2( fragCoord_prev ), 0 );
 				vec4 pathInfo_prev      = texelFetch( pathInfo_in_prev, ivec2( fragCoord_prev ), 0 );
 				vec4 pathX2_normal_prev = texelFetch( pathX2_normal_in_prev, ivec2( fragCoord_prev ), 0 );
@@ -966,11 +967,16 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					{ // add previous frame's sample
 
+						// @todo: check jacobian, do we even need it?
+						// float jacobian =
+						// 	dot( normalize( pathX1      - pathX2_prev ), pathX2_normal_prev ) /
+						// 	dot( normalize( pathX1_prev - pathX2_prev ), pathX2_normal_prev ) *
+						// 	dot( pathX2_prev - pathX1     , pathX2_prev - pathX1      ) /
+						// 	dot( pathX2_prev - pathX1_prev, pathX2_prev - pathX1_prev );
+
 						SurfaceRecord surf             = readSurfaceRecord( ivec2( gl_FragCoord.xy ) );
 						float         phat             = targetFunc( surf, pathX0, pathX1, pathX2_prev );
 						float         resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
-						
-						// @todo: consider adding a jacobian term
 
 						RisSample samp;
 
