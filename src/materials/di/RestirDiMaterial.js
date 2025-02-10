@@ -403,14 +403,16 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
 
-			layout(location = 0) out vec4 pathX2_out;
-			layout(location = 1) out vec4 pathInfo_out;
+			layout(location = 0) out vec4 pathX1_out;
+			layout(location = 1) out vec4 pathX2_out;
+			layout(location = 2) out vec4 pathInfo_out;
 
 			#endif
 
 			#if RESTIR_PASS == PASS_TEMPORAL_REUSE
 			// Previous frame data
 
+			uniform sampler2D pathX1_in_prev;
 			uniform sampler2D pathX2_in_prev;
 			uniform sampler2D pathInfo_in_prev;
 
@@ -418,11 +420,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#if RESTIR_PASS == PASS_SAVE_SAMPLE
 
+			uniform sampler2D pathX1_in;
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
 
-			layout(location = 0) out vec4 pathX2_out;
-			layout(location = 1) out vec4 pathInfo_out;
+			layout(location = 0) out vec4 pathX1_out;
+			layout(location = 1) out vec4 pathX2_out;
+			layout(location = 2) out vec4 pathInfo_out;
 
 			#endif
 
@@ -867,6 +871,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 pathInfo = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				// "default values"
+				pathX1_out   = pathX1;
 				pathX2_out   = pathX2;
 				pathInfo_out = pathInfo;
 
@@ -937,6 +942,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						SurfaceRecord surf             = readSurfaceRecord( ivec2( gl_FragCoord.xy ) );
 						float         phat             = targetFunc( surf, pathX0, pathX1, pathX2_prev );
 						float         resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
+						
+						// @todo: consider adding a jacobian term
 
 						RisSample samp;
 
@@ -971,7 +978,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// this sample, so that we can reuse for the next frame.
 				////////////////////////////////////////////////////////////////
 
-				pathX2_out = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX1_out   = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX2_out   = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
 				pathInfo_out = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				#endif

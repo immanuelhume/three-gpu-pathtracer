@@ -173,17 +173,17 @@ export class RestirPathTracer {
 			count: 6,
 
 		} );
-        this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
+        // this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
 
-			format: RGBAFormat,
-			type: FloatType,
-			depthBuffer: false,
-			magFilter: NearestFilter,
-			minFilter: NearestFilter,
-            internalFormat: 'RGBA32F',
-			count: 2,
+		// 	format: RGBAFormat,
+		// 	type: FloatType,
+		// 	depthBuffer: false,
+		// 	magFilter: NearestFilter,
+		// 	minFilter: NearestFilter,
+        //     internalFormat: 'RGBA32F',
+		// 	count: 2,
 
-		} );
+		// } );
         this.temporalReuseTargetA = new WebGLRenderTarget( 1, 1, {
 
 			format: RGBAFormat,
@@ -192,7 +192,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 2,
+			count: 3,
 
 		} );
         this.temporalReuseTargetB = new WebGLRenderTarget( 1, 1, {
@@ -203,7 +203,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 2,
+			count: 3,
 
 		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );
@@ -319,22 +319,24 @@ export class RestirPathTracer {
         // this.passSpatialReuse.render( this.renderer );
 
         // temporal reuse
-        this.passTemporalReuse.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetB.textures[ 0 ] };
-        this.passTemporalReuse.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetB.textures[ 1 ] };
+        this.passTemporalReuse.material.uniforms.pathX1_in_prev = { value: this.temporalReuseTargetB.textures[ 0 ] };
+        this.passTemporalReuse.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetB.textures[ 1 ] };
+        this.passTemporalReuse.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetB.textures[ 2 ] };
         this.passTemporalReuse.material.onBeforeRender();
         this.renderer.setRenderTarget( this.temporalReuseTargetA );
         this.passTemporalReuse.render( this.renderer );
 
         // save current sample
-        this.passSaveSample.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetA.textures[ 0 ] };
-        this.passSaveSample.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetA.textures[ 1 ] };
+        this.passSaveSample.material.uniforms.pathX1_in = { value: this.temporalReuseTargetA.textures[ 0 ] };
+        this.passSaveSample.material.uniforms.pathX2_in = { value: this.temporalReuseTargetA.textures[ 1 ] };
+        this.passSaveSample.material.uniforms.pathInfo_in = { value: this.temporalReuseTargetA.textures[ 2 ] };
         this.passSaveSample.material.onBeforeRender();
         this.renderer.setRenderTarget( this.temporalReuseTargetB );
         this.passSaveSample.render( this.renderer );
 
         // shade pixel
-        this.passShadePixel.material.uniforms.pathX2 = { value: this.temporalReuseTargetA.textures[ 0 ] };
-        this.passShadePixel.material.uniforms.pathInfo = { value: this.temporalReuseTargetA.textures[ 1 ] };
+        this.passShadePixel.material.uniforms.pathX2 = { value: this.temporalReuseTargetA.textures[ 1 ] };
+        this.passShadePixel.material.uniforms.pathInfo = { value: this.temporalReuseTargetA.textures[ 2 ] };
         this.passShadePixel.material.onBeforeRender();
         this.renderer.setRenderTarget( this.pingTarget );
         this.passShadePixel.render( this.renderer );
@@ -431,7 +433,7 @@ export class RestirPathTracer {
         this.pongTarget.setSize( w, h );
         this.pungTarget.setSize( w, h );
         this.samplesTarget.setSize( w, h );
-        this.spatialReuseTarget.setSize( w, h );
+        // this.spatialReuseTarget.setSize( w, h );
         this.temporalReuseTargetA.setSize( w, h );
         this.temporalReuseTargetB.setSize( w, h );
 
@@ -562,9 +564,9 @@ export class RestirPathTracer {
         this.renderer.setClearColor( 0, 0 );
         this.renderer.clearColor();
 
-        this.renderer.setRenderTarget( this.spatialReuseTarget );
-        this.renderer.setClearColor( 0, 0 );
-        this.renderer.clearColor();
+        // this.renderer.setRenderTarget( this.spatialReuseTarget );
+        // this.renderer.setClearColor( 0, 0 );
+        // this.renderer.clearColor();
 
         this.renderer.setRenderTarget( this.temporalReuseTargetA );
         this.renderer.setClearColor( 0, 0 );
