@@ -885,9 +885,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 pathX2_prev   = texelFetch( pathX2_in_prev, ivec2( fragCoord_prev ), 0 );
 				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( fragCoord_prev ), 0 );
 
-				// vec4 pathX2_prev   = texelFetch( pathX2_in_prev, ivec2( gl_FragCoord.xy ), 0 );
-				// vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( gl_FragCoord.xy ), 0 );
-
 				bool hasPrevOnly = pathInfo_prev.x > 0.0 && pathInfo.x < 1.0;
 				bool hasCurrOnly = pathInfo_prev.x < 1.0 && pathInfo.x > 0.0;
 				bool hasBoth     = pathInfo_prev.x > 0.0 && pathInfo.x > 0.0;
