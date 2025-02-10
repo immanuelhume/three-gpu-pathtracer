@@ -212,7 +212,7 @@ export class RestirPathTracer {
 
             ...this.passGenSample.material.uniforms,
             ...this.sharedUniforms,
-            M_area: { value: 8 },
+            M_area: { value: 4 },
             M_bsdf: { value: 1 },
 
         };
