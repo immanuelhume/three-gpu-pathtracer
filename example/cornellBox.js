@@ -45,6 +45,14 @@ async function init() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 	document.body.appendChild( renderer.domElement );
 
+    const gl = renderer.getContext();
+    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : "Unknown";
+    const rendererInfo = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Unknown";
+
+    console.log("GPU Vendor:", vendor);
+    console.log("GPU Renderer:", rendererInfo);
+
 	// path tracer
 	// pathTracer = new WebGLPathTracer( renderer );
 	// pathTracer.filterGlossyFactor = 0.5;
