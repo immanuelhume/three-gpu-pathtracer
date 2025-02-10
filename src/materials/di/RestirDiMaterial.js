@@ -494,10 +494,14 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			void main() {
 
+				////////////////////////////////////////////////////////////////
 				// Common init code
+				////////////////////////////////////////////////////////////////
+
 				rng_initialize( gl_FragCoord.xy, seed );
+
 				sobolPixelIndex = ( uint( gl_FragCoord.x ) << 16 ) | uint( gl_FragCoord.y );
-				sobolPathIndex = uint( seed );
+				sobolPathIndex  = uint( seed );
 
 				#if RESTIR_PASS == PASS_GEN_SAMPLE
 
