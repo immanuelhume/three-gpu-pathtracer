@@ -170,7 +170,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 6,
+			count: 7,
 
 		} );
         // this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {

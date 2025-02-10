@@ -315,6 +315,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			struct RisSample {
 
 				vec4 path[3];
+				vec4 pathX2_normal;
 				float resamplingWeight;
 
 			};
@@ -369,6 +370,19 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			}
 
+			vec3 normalOfSurfaceHit( SurfaceHit surfaceHit ) {
+			
+				vec3 triNormal = normalize( textureSampleBarycoord(
+					attributesArray,
+					ATTR_NORMAL,
+					surfaceHit.barycoord,
+					surfaceHit.faceIndices.xyz
+				).xyz );
+
+				return triNormal;
+
+			}
+
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
 			/*
@@ -388,6 +402,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			layout(location = 3) out vec4 pathX1;
 			layout(location = 4) out vec4 pathX2;
 			layout(location = 5) out vec4 pathInfo;
+			layout(location = 6) out vec4 pathX2_normal;
 
 			uniform int M_area; // number of uniform random area light samples
 			uniform int M_bsdf; // number of bsdf samples
@@ -522,9 +537,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				surfaceHit_barycoord_side  = vec4( 0.0, 0.0, 0.0, 0.0 );
 				surfaceHit_faceNormal_dist = vec4( 0.0, 0.0, 0.0, 0.0 );
 
-				pathX1   = vec4( 0.0, 0.0, 0.0, 0.0 );
-				pathX2   = vec4( 0.0, 0.0, 0.0, 0.0 );
-				pathInfo = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathX1        = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathX2        = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathInfo      = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathX2_normal = vec4( 0.0, 0.0, 0.0, 0.0 );
 
 				pathInfo.x = 1.0;
 
@@ -606,9 +622,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					float resamplingWeight = misWeight * phat * invLightPdf;
 
 					RisSample samp;
-					samp.path[0] = vec4( ray.origin, 0.0 );
-					samp.path[1] = pathX1;
-					samp.path[2] = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
+
+					samp.path[0]          = vec4( ray.origin, 0.0 );
+					samp.path[1]          = pathX1;
+					samp.path[2]          = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
+					samp.pathX2_normal    = vec4( emTri.normal, 1.0 );
 					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, phat, rand( 17 + i ) );
@@ -643,16 +661,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					vec3 lightHitPoint = stepRayOrigin( bounceRay.origin, bounceRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
 
+					vec3 triNormal = normalOfSurfaceHit( surfaceHit );
+
 					vec3 a = texelFetch1D( bvh.position, surfaceHit.faceIndices.x ).xyz;
 					vec3 b = texelFetch1D( bvh.position, surfaceHit.faceIndices.y ).xyz;
 					vec3 c = texelFetch1D( bvh.position, surfaceHit.faceIndices.z ).xyz;
-
-					vec3 triNormal = normalize( textureSampleBarycoord(
-						attributesArray,
-						ATTR_NORMAL,
-						surfaceHit.barycoord,
-						surfaceHit.faceIndices.xyz
-					).xyz );
 
 					float triArea = 0.5 * length( cross( b - a, c - a ) );
 
@@ -672,9 +685,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					float resamplingWeight = misWeight * phat / scatterRec.pdf;
 
 					RisSample samp;
-					samp.path[0] = vec4( ray.origin, 0.0 );
-					samp.path[1] = pathX1;
-					samp.path[2] = vec4( lightHitPoint, float( materialIndex ) );
+
+					samp.path[0]          = vec4( ray.origin, 0.0 );
+					samp.path[1]          = pathX1;
+					samp.path[2]          = vec4( lightHitPoint, float( materialIndex ) );
+					samp.pathX2_normal    = vec4( triNormal, 1.0 );
 					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, phat, rand( 18 + i ) );
@@ -688,9 +703,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX2     = reservoir.sampleOut.path[ 2 ];
-				pathInfo.y = reservoir.wSum / reservoir.phatOut;
-				pathInfo.z = reservoir.phatOut;
+				pathX2        = reservoir.sampleOut.path[ 2 ];
+				pathInfo.y    = reservoir.wSum / reservoir.phatOut;
+				pathInfo.z    = reservoir.phatOut;
+				pathX2_normal = reservoir.sampleOut.pathX2_normal;
 
 				// @todo: insert visibility pass
 
