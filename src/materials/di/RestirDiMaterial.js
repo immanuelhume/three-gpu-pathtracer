@@ -507,7 +507,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			pathInfo.x: ok
 			pathInfo.y: unbiased contrib weight
 			pathInfo.z: target function evaluated for selected sample
-			pathInfo.w: depth of primary ray
+			pathInfo.w: depth of primary ray // needed for spatial resampling, but unused for now
 			
 			ok < 0.0: primary ray missed
 			ok < 1.0: secondary ray missed
@@ -731,18 +731,33 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				// We have a continuation ray. First, let's extract a sample from the reservoir.
+				// We have a continuation ray. First, let's extract a sample
+				// from the reservoir.
 
-				if ( !reservoir.valid ) {
+				Reservoir reservoir2 = initReservoir();
+
+				if ( reservoir.valid ) {
+
+					RisSample samp;
+
+					samp.pathX2           = reservoir.sampleOut.pathX2;
+					samp.resamplingWeight = 1.0 * reservoir.phatOut * ( reservoir.wSum / reservoir.phatOut );
+
+					// @todo: use a better random number system
+					addSample( reservoir2, samp, reservoir.phatOut, rand( 18 ) );
+
+				}
+
+				if ( !reservoir2.valid ) {
 
 					pathInfo.x = 0.0;
 					return;
 
 				}
 
-				pathX2        = reservoir.sampleOut.pathX2;
-				pathInfo.y    = reservoir.wSum / reservoir.phatOut;
-				pathInfo.z    = reservoir.phatOut;
+				pathX2     = reservoir2.sampleOut.pathX2;
+				pathInfo.y = reservoir2.wSum / reservoir.phatOut;
+				pathInfo.z = reservoir2.phatOut;
 
 				// @todo: insert visibility pass
 
