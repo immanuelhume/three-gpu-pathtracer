@@ -723,9 +723,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					}
 
-					pathX2        = reservoir.sampleOut.pathX2;
-					pathInfo.y    = reservoir.wSum / reservoir.phatOut;
-					pathInfo.z    = reservoir.phatOut;
+					pathX2      = reservoir.sampleOut.pathX2;
+					pathInfo.y  = reservoir.wSum / reservoir.phatOut;
+					pathInfo.z  = reservoir.phatOut;
 
 					return;
 
@@ -917,10 +917,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// the previous frame's G buffers.
 				////////////////////////////////////////////////////////////////
 
-				vec4 pathX0        = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
-				vec4 pathX1        = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
-				vec4 pathX2        = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
-				vec4 pathInfo      = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX0   = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
+				vec4 pathX1   = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX2   = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathInfo = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				// "default values"
 				pathX2_out        = pathX2;
@@ -1010,8 +1010,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX2_out        = reservoir.sampleOut.pathX2;
-				pathInfo_out.y    = reservoir.wSum / reservoir.phatOut;
+				pathX2_out     = reservoir.sampleOut.pathX2;
+				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
 
 				#endif
 
@@ -1024,8 +1024,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// this sample, so that we can reuse for the next frame.
 				////////////////////////////////////////////////////////////////
 
-				pathX2_out        = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
-				pathInfo_out      = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX2_out   = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathInfo_out = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				#endif
 
