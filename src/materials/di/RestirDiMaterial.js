@@ -440,7 +440,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				      int           M_bsdf,
 				      vec4          pathX1, // not literal pathX1, but relative
 				      vec3          wo,
-				      SurfaceRecord surf
+				      SurfaceRecord surf,
+				out   vec4          pathX2
 			) {
 
 				ScatterRecord scatterRec = bsdfSample( wo, surf, rand2( 15 ) );
@@ -460,14 +461,15 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				Material material      = readMaterialInfo( materials, materialIndex );
 				vec3     emission      = material.emissiveIntensity * material.emissive;
 
+				pathX2.xyz = stepRayOrigin( bounceRay.origin, bounceRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
+				pathX2.w   = float( materialIndex );
+
 				if ( emission == vec3( 0.0 ) ) {
 
 					// @todo: turn this into a continuation ray
 					return bsdfSample_miss;
 
 				} else {
-
-					vec3 lightHitPoint = stepRayOrigin( bounceRay.origin, bounceRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
 
 					vec3 triNormal = normalOfSurfaceHit( surfaceHit );
 
@@ -494,7 +496,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					RisSample samp;
 
 					samp.pathX1           = pathX1;
-					samp.pathX2           = vec4( lightHitPoint, float( materialIndex ) );
+					samp.pathX2           = pathX2;
 					samp.pathX2_normal    = vec4( triNormal, 1.0 );
 					samp.resamplingWeight = resamplingWeight;
 
@@ -613,6 +615,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			}
 
+			/* This assumes that pathX2 belongs on the surface of a light. */
 			float targetFunc( SurfaceRecord surf, vec4 pathX0, vec4 pathX1, vec4 pathX2 ) {
 			
 				vec3 lightDir = normalize( pathX2.xyz - pathX1.xyz );
@@ -631,6 +634,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				float phat = dot( sampleColor * emission, luma );
 
 				return phat;
+
 			}
 
 			#endif
@@ -722,7 +726,32 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				// NEE
 				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf );	
-				addBsdfSample( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf );	
+
+				vec4 pathX2_continuation;
+				int bsdfSampleResult = addBsdfSample( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, pathX2_continuation );	
+
+				if ( bsdfSampleResult == bsdfSample_miss || bsdfSampleResult == bsdfSample_lightHit ) {
+
+					// There is no continuation ray. So we end initial
+					// resampling here and it's more or less like ReSTIR DI.
+
+					if ( !reservoir.valid ) {
+
+						pathInfo.x = 0.0;
+						return;
+
+					}
+
+					pathX2        = reservoir.sampleOut.pathX2;
+					pathInfo.y    = reservoir.wSum / reservoir.phatOut;
+					pathInfo.z    = reservoir.phatOut;
+					pathX2_normal = reservoir.sampleOut.pathX2_normal;
+
+					return;
+
+				}
+
+				// We have a continuation ray. First, let's extract a sample from the reservoir.
 
 				if ( !reservoir.valid ) {
 
