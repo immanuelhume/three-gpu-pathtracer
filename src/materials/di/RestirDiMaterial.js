@@ -651,9 +651,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				surfaceHit_barycoord_side  = vec4( 0.0, 0.0, 0.0, 0.0 );
 				surfaceHit_faceNormal_dist = vec4( 0.0, 0.0, 0.0, 0.0 );
 
-				pathX1        = vec4( 0.0, 0.0, 0.0, 0.0 );
-				pathX2        = vec4( 0.0, 0.0, 0.0, 0.0 );
-				pathInfo      = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathX1   = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathX2   = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathInfo = vec4( 0.0, 0.0, 0.0, 0.0 );
 
 				pathInfo.x = 1.0;
 
