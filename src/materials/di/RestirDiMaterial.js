@@ -307,8 +307,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			struct RisSample {
 
-				vec4  pathX1;
-				vec4  pathX2;
+				vec4  pathX1; // w component stores material index
+				vec4  pathX2; // w component stores material index
 				vec4  pathX2_normal;
 				float resamplingWeight;
 
@@ -375,6 +375,58 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				return triNormal;
 
+			}
+
+			void areaSampleLight(
+				inout Reservoir     reservoir,
+				      int           M_area,
+				      int           M_bsdf,
+				      vec4          pathX1, // not literal pathX1, but relative
+				      vec3          wo,
+				      SurfaceRecord surf
+			) {
+
+				for ( int i = 0; i < M_area; ++i ) {
+
+					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( 16 + i ) );
+
+					vec3  wi        = normalize( emTri.barycoord - pathX1.xyz );
+					float lightDist = length( emTri.barycoord - pathX1.xyz );
+
+					if ( dot( wi, emTri.normal ) >= 0.0 ) {
+					
+						// Wrong side of the light - don't bother
+						continue;
+					
+					}
+
+					float invLightDistSquared = 1.0 / ( lightDist * lightDist );
+
+					float invLightPdf = invLightDistSquared * emTri.tri.area * dot( -wi, emTri.normal ) * float( emissiveTriangles.count );
+					float lightPdf    = 1.0 / invLightPdf;
+
+					uint     emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+					Material lightMaterial      = readMaterialInfo( materials, emTriMaterialIndex );
+					vec3     emission           = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+					vec3 sampleColor;
+
+					float materialPdf = bsdfResult( wo, wi, surf, sampleColor );
+
+					float phat             = dot( sampleColor * emission, luma );
+					float misWeight        = lightPdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * materialPdf );
+					float resamplingWeight = misWeight * phat * invLightPdf;
+
+					RisSample samp;
+
+					samp.pathX1           = pathX1;
+					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
+					samp.pathX2_normal    = vec4( emTri.normal, 1.0 );
+					samp.resamplingWeight = resamplingWeight;
+
+					addSample( reservoir, samp, phat, rand( 17 + i ) );
+				
+				}
 			}
 
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
@@ -589,49 +641,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				
 				Reservoir reservoir = initReservoir();
 
-				for ( int i = 0; i < M_area; ++i ) {
+				int M_bsdf = 1; // override the uniform, @todo: remove the uniform...
 
-					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( 16 + i ) );
+				// NEE
+				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf );
 
-					vec3  lightDir  = normalize( emTri.barycoord - hitPoint );
-					float lightDist = length( emTri.barycoord - hitPoint );
-
-					if ( dot( lightDir, emTri.normal ) >= 0.0 ) {
-					
-						// Wrong side of the light - don't bother
-						continue;
-					
-					}
-
-					float invLightDistSquared = 1.0 / ( lightDist * lightDist );
-
-					float invLightPdf = invLightDistSquared * emTri.tri.area * dot( -lightDir, emTri.normal ) * float( emissiveTriangles.count );
-					float lightPdf    = 1.0 / invLightPdf;
-
-					uint     emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
-					Material lightMaterial      = readMaterialInfo( materials, emTriMaterialIndex );
-					vec3     emission           = lightMaterial.emissiveIntensity * lightMaterial.emissive;
-
-					vec3 sampleColor;
-
-					float materialPdf = bsdfResult( -ray.direction, lightDir, surf, sampleColor );
-
-					float phat             = dot( sampleColor * emission, luma );
-					float misWeight        = lightPdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * materialPdf );
-					float resamplingWeight = misWeight * phat * invLightPdf;
-
-					RisSample samp;
-
-					samp.pathX1           = pathX1;
-					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
-					samp.pathX2_normal    = vec4( emTri.normal, 1.0 );
-					samp.resamplingWeight = resamplingWeight;
-
-					addSample( reservoir, samp, phat, rand( 17 + i ) );
-				
-				}
-
-				int M_bsdf = 1; // override the uniform
 				{
 					// Use exactly one bsdf sample. If the direction strikes a
 					// light source, we'll use it directly for MIS and forgo

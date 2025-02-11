@@ -344,7 +344,7 @@ export class RestirPathTracer {
         this.renderer.setRenderTarget( this.pingTarget );
         this.passShadePixel.render( this.renderer );
 
-        // average samples
+        // average samples, @todo: remove this stage, or make it optional
         this.passAverageSamples.material.uniforms.nSamples.value = this.nSamples;
         this.passAverageSamples.material.uniforms.curr.value = this.pungTarget.texture;
         this.passAverageSamples.material.uniforms.newSample.value = this.pingTarget.texture;
