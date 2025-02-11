@@ -170,7 +170,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 7,
+			count: 6,
 
 		} );
         // this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
@@ -192,7 +192,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 4,
+			count: 2,
 
 		} );
         this.temporalReuseTargetB = new WebGLRenderTarget( 1, 1, {
@@ -203,7 +203,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 4,
+			count: 2,
 
 		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );
@@ -252,7 +252,6 @@ export class RestirPathTracer {
             pathX1_in: { value: this.samplesTarget.textures[ 3 ] },
             pathX2_in: { value: this.samplesTarget.textures[ 4 ] },
             pathInfo_in: { value: this.samplesTarget.textures[ 5 ] },
-            pathX2_normal_in: { value: this.samplesTarget.textures[ 6 ] },
 
         };
         this.passTemporalReuse.material.defines = {
@@ -320,26 +319,22 @@ export class RestirPathTracer {
         // this.passSpatialReuse.render( this.renderer );
 
         // temporal reuse
-        this.passTemporalReuse.material.uniforms.pathX1_in_prev = { value: this.temporalReuseTargetB.textures[ 0 ] };
-        this.passTemporalReuse.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetB.textures[ 1 ] };
-        this.passTemporalReuse.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetB.textures[ 2 ] };
-        this.passTemporalReuse.material.uniforms.pathX2_normal_in_prev = { value: this.temporalReuseTargetB.textures[ 3 ] };
+        this.passTemporalReuse.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetB.textures[ 0 ] };
+        this.passTemporalReuse.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetB.textures[ 1 ] };
         this.passTemporalReuse.material.onBeforeRender();
         this.renderer.setRenderTarget( this.temporalReuseTargetA );
         this.passTemporalReuse.render( this.renderer );
 
         // save current sample
-        this.passSaveSample.material.uniforms.pathX1_in = { value: this.temporalReuseTargetA.textures[ 0 ] };
-        this.passSaveSample.material.uniforms.pathX2_in = { value: this.temporalReuseTargetA.textures[ 1 ] };
-        this.passSaveSample.material.uniforms.pathInfo_in = { value: this.temporalReuseTargetA.textures[ 2 ] };
-        this.passSaveSample.material.uniforms.pathX2_normal_in = { value: this.temporalReuseTargetA.textures[ 3 ] };
+        this.passSaveSample.material.uniforms.pathX2_in = { value: this.temporalReuseTargetA.textures[ 0 ] };
+        this.passSaveSample.material.uniforms.pathInfo_in = { value: this.temporalReuseTargetA.textures[ 1 ] };
         this.passSaveSample.material.onBeforeRender();
         this.renderer.setRenderTarget( this.temporalReuseTargetB );
         this.passSaveSample.render( this.renderer );
 
         // shade pixel
-        this.passShadePixel.material.uniforms.pathX2 = { value: this.temporalReuseTargetA.textures[ 1 ] };
-        this.passShadePixel.material.uniforms.pathInfo = { value: this.temporalReuseTargetA.textures[ 2 ] };
+        this.passShadePixel.material.uniforms.pathX2 = { value: this.temporalReuseTargetA.textures[ 0 ] };
+        this.passShadePixel.material.uniforms.pathInfo = { value: this.temporalReuseTargetA.textures[ 1 ] };
         this.passShadePixel.material.onBeforeRender();
         this.renderer.setRenderTarget( this.pingTarget );
         this.passShadePixel.render( this.renderer );
