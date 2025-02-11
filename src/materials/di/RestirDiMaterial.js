@@ -380,12 +380,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				      int           M_bsdf,
 				      vec4          pathX1, // not literal pathX1, but relative
 				      vec3          wo,
-				      SurfaceRecord surf
+				      SurfaceRecord surf,
+				inout int           randBase
 			) {
 
 				for ( int i = 0; i < M_area; ++i ) {
 
-					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( 16 + i ) );
+					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( ++randBase ) );
 
 					vec3  wi        = normalize( emTri.barycoord - pathX1.xyz );
 					float lightDist = length( emTri.barycoord - pathX1.xyz );
@@ -419,7 +420,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
 					samp.resamplingWeight = resamplingWeight;
 
-					addSample( reservoir, samp, phat, rand( 17 + i ) );
+					addSample( reservoir, samp, phat, rand( ++randBase ) );
 				
 				}
 			}
@@ -436,10 +437,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				      vec4          pathX1, // not literal pathX1, but relative
 				      vec3          wo,
 				      SurfaceRecord surf,
-				out   vec4          pathX2
+				out   vec4          pathX2,
+				inout int           randBase
 			) {
 
-				ScatterRecord scatterRec = bsdfSample( wo, surf, rand2( 15 ) );
+				ScatterRecord scatterRec = bsdfSample( wo, surf, rand2( ++randBase ) );
 
 				SurfaceHit surfaceHit;
 
@@ -493,7 +495,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = pathX2;
 					samp.resamplingWeight = resamplingWeight;
 
-					addSample( reservoir, samp, phat, rand( 18 ) );
+					addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 					return bsdfSample_lightHit;
 
@@ -646,6 +648,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// emissive intensity.
 				////////////////////////////////////////////////////////////////
 
+				int randBase = 0;
+
 				// Initialize outputs
 				surfaceHit_faceIndices     = vec4( 0.0, 0.0, 0.0, 0.0 );
 				surfaceHit_barycoord_side  = vec4( 0.0, 0.0, 0.0, 0.0 );
@@ -706,10 +710,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				int M_bsdf = 1; // override the uniform, @todo: remove the uniform...
 
 				// NEE
-				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf );	
+				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, randBase );	
 
 				vec4 pathX2_continuation;
-				int bsdfSampleResult = addBsdfSample( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, pathX2_continuation );	
+				int bsdfSampleResult = addBsdfSample( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, pathX2_continuation, randBase );	
 
 				if ( bsdfSampleResult == bsdfSample_miss || bsdfSampleResult == bsdfSample_lightHit ) {
 
@@ -743,8 +747,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = reservoir.sampleOut.pathX2;
 					samp.resamplingWeight = 1.0 * reservoir.phatOut * ( reservoir.wSum / reservoir.phatOut );
 
-					// @todo: use a better random number system
-					addSample( reservoir2, samp, reservoir.phatOut, rand( 18 ) );
+					addSample( reservoir2, samp, reservoir.phatOut, rand( ++randBase ) );
 
 				}
 
@@ -770,6 +773,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				//
 				// Causes artifacts - unused for now.
 				////////////////////////////////////////////////////////////////
+
+				int randBase = 1000;
 
 				// @todo: different spatial reuse strategies might be worth exploring
 				// @todo: different order of passes
@@ -821,7 +826,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2 = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
 					samp.resamplingWeight = resamplingWeight;
 
-					addSample( reservoir, samp, pathInfo.z, rand( 20 ) );
+					addSample( reservoir, samp, pathInfo.z, rand( ++randBase ) );
 
 				}
 
@@ -907,7 +912,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2 = pathX2;
 					samp.resamplingWeight = resamplingWeight;
 
-					addSample( reservoir, samp, phat, rand( 21 + i ) );
+					addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 				}
 
@@ -931,6 +936,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// (not generalized balance heuristic) because I'm not saving
 				// the previous frame's G buffers.
 				////////////////////////////////////////////////////////////////
+
+				int randBase = 2000;
 
 				vec4 pathX0   = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
 				vec4 pathX1   = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
@@ -978,7 +985,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = pathX2_prev;
 					samp.resamplingWeight = resamplingWeight;
 
-					addSample( reservoir, samp, phat, rand( 23 ) );
+					addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 				} else if ( hasBoth ) {
 
@@ -994,7 +1001,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						samp.pathX2           = pathX2;
 						samp.resamplingWeight = resamplingWeight;
 
-						addSample( reservoir, samp, pathInfo.z, rand( 22 ) );
+						addSample( reservoir, samp, pathInfo.z, rand( ++randBase ) );
 
 					}
 
@@ -1009,7 +1016,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						samp.pathX2           = pathX2_prev;
 						samp.resamplingWeight = resamplingWeight;
 
-						addSample( reservoir, samp, phat, rand( 23 ) );
+						addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 					}
 
