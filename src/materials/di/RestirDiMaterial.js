@@ -305,17 +305,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			uniform EmissiveTrianglesInfo emissiveTriangles;
 
-			struct Sample {
-
-				vec4 path[3];
-				float unbiasedContribWeight;
-
-			};
-
 			struct RisSample {
 
-				vec4 path[3];
-				vec4 pathX2_normal;
+				vec4  pathX1;
+				vec4  pathX2;
+				vec4  pathX2_normal;
 				float resamplingWeight;
 
 			};
@@ -628,9 +622,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					RisSample samp;
 
-					samp.path[0]          = vec4( ray.origin, 0.0 );
-					samp.path[1]          = pathX1;
-					samp.path[2]          = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
+					samp.pathX1           = pathX1;
+					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
 					samp.pathX2_normal    = vec4( emTri.normal, 1.0 );
 					samp.resamplingWeight = resamplingWeight;
 
@@ -641,7 +634,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				int M_bsdf = 1; // override the uniform
 				{
 					// Use exactly one bsdf sample. If the direction strikes a
-					// light source, we'll use it directly for MIS and forgor
+					// light source, we'll use it directly for MIS and forgo
 					// indirect light paths for this sample. Otherwise, we'll
 					// take that as pathX2 and continue to sample for pathX3.
 
@@ -690,9 +683,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 								RisSample samp;
 
-								samp.path[0]          = vec4( ray.origin, 0.0 );
-								samp.path[1]          = pathX1;
-								samp.path[2]          = vec4( lightHitPoint, float( materialIndex ) );
+								samp.pathX1           = pathX1;
+								samp.pathX2           = vec4( lightHitPoint, float( materialIndex ) );
 								samp.pathX2_normal    = vec4( triNormal, 1.0 );
 								samp.resamplingWeight = resamplingWeight;
 
@@ -713,7 +705,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX2        = reservoir.sampleOut.path[ 2 ];
+				pathX2        = reservoir.sampleOut.pathX2;
 				pathInfo.y    = reservoir.wSum / reservoir.phatOut;
 				pathInfo.z    = reservoir.phatOut;
 				pathX2_normal = reservoir.sampleOut.pathX2_normal;
@@ -777,9 +769,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					float resamplingWeight = misWeight * pathInfo.z * pathInfo.y;
 
 					RisSample samp;
-					samp.path[0] = pathX0;
-					samp.path[1] = pathX1;
-					samp.path[2] = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+					samp.pathX1 = pathX1;
+					samp.pathX2 = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
 					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, pathInfo.z, rand( 20 ) );
@@ -865,9 +856,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					float resamplingWeight = misWeight * phat * unbiasedContribWeight;
 
 					RisSample samp;
-					samp.path[0] = pathX0;
-					samp.path[1] = pathX1;
-					samp.path[2] = pathX2;
+					samp.pathX1 = pathX1;
+					samp.pathX2 = pathX2;
 					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, phat, rand( 21 + i ) );
@@ -880,7 +870,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX2_out = reservoir.sampleOut.path[ 2 ];
+				pathX2_out = reservoir.sampleOut.pathX2;
 				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
 
 				#endif
@@ -943,9 +933,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					RisSample samp;
 
-					samp.path[0]          = pathX0;
-					samp.path[1]          = pathX1;
-					samp.path[2]          = pathX2_prev;
+					samp.pathX1           = pathX1;
+					samp.pathX2           = pathX2_prev;
 					samp.pathX2_normal    = pathX2_normal_prev;
 					samp.resamplingWeight = resamplingWeight;
 
@@ -962,9 +951,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 						RisSample samp;
 
-						samp.path[0]          = pathX0;
-						samp.path[1]          = pathX1;
-						samp.path[2]          = pathX2;
+						samp.pathX1           = pathX1;
+						samp.pathX2           = pathX2;
 						samp.pathX2_normal    = pathX2_normal;
 						samp.resamplingWeight = resamplingWeight;
 
@@ -980,9 +968,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 						RisSample samp;
 
-						samp.path[0]          = pathX0;
-						samp.path[1]          = pathX1;
-						samp.path[2]          = pathX2_prev;
+						samp.pathX1           = pathX1;
+						samp.pathX2           = pathX2_prev;
 						samp.pathX2_normal    = pathX2_normal_prev;
 						samp.resamplingWeight = resamplingWeight;
 
@@ -1002,7 +989,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX2_out        = reservoir.sampleOut.path[ 2 ];
+				pathX2_out        = reservoir.sampleOut.pathX2;
 				pathInfo_out.y    = reservoir.wSum / reservoir.phatOut;
 				pathX2_normal_out = reservoir.sampleOut.pathX2_normal;
 
@@ -1048,12 +1035,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 pathX1 = texelFetch( pathX1, ivec2( gl_FragCoord.xy ), 0 );
 				vec4 pathX2 = texelFetch( pathX2, ivec2( gl_FragCoord.xy ), 0 );
 
-				Sample samp;
-
-				samp.path[0]               = pathX0;
-				samp.path[1]               = pathX1;
-				samp.path[2]               = pathX2;
-				samp.unbiasedContribWeight = pathInfo.y;
+				float unbiasedContribWeight = pathInfo.y;
 
 				int surfRecord;
 				SurfaceRecord surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ), surfRecord );
@@ -1065,9 +1047,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				float lightDist = length( samp.path[ 2 ].xyz - samp.path[ 1 ].xyz );
-				vec3 lightDir   = normalize( samp.path[ 2 ].xyz - samp.path[ 1 ].xyz );
-				vec3 rayDir     = normalize( samp.path[ 1 ].xyz - samp.path[ 0 ].xyz );
+				float lightDist = length( pathX2.xyz - pathX1.xyz );
+				vec3 lightDir   = normalize( pathX2.xyz - pathX1.xyz );
+				vec3 rayDir     = normalize( pathX1.xyz - pathX0.xyz );
 
 				if ( pathInfo.x < 1.0 || dot( lightDir, surf.normal ) <= 0.0 ) {
 
@@ -1082,7 +1064,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				SurfaceHit lightHit;
 
-				Ray shadowRay = Ray( samp.path[ 1 ].xyz, lightDir );
+				Ray shadowRay = Ray( pathX1.xyz, lightDir );
 				int hitType   = traceScene( shadowRay, lightHit );
 
 				if ( hitType == SURFACE_HIT ) {
@@ -1110,7 +1092,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							// it's included in [sampleColor]? Double checked
 							// that image converges without it.
 
-							fragColor = vec4( (surf.emission + sampleColor * emission) * samp.unbiasedContribWeight, 1.0 );
+							fragColor = vec4( (surf.emission + sampleColor * emission) * unbiasedContribWeight, 1.0 );
 
 						} else {
 
