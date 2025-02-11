@@ -429,6 +429,83 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 			}
 
+			const int bsdfSample_miss         = 0;
+			const int bsdfSample_lightHit     = 1;
+			const int bsdfSample_continuation = 2;
+
+			/* Adds a single bsdf sample. */
+			int addBsdfSample(
+				inout Reservoir     reservoir,
+				      int           M_area,
+				      int           M_bsdf,
+				      vec4          pathX1, // not literal pathX1, but relative
+				      vec3          wo,
+				      SurfaceRecord surf
+			) {
+
+				ScatterRecord scatterRec = bsdfSample( wo, surf, rand2( 15 ) );
+
+				SurfaceHit surfaceHit;
+
+				Ray bounceRay = Ray( pathX1.xyz, scatterRec.direction );
+				int hitType   = traceScene( bounceRay, surfaceHit );
+
+				if ( hitType != SURFACE_HIT ) {
+
+					return bsdfSample_miss;
+				
+				}
+
+				uint     materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+				Material material      = readMaterialInfo( materials, materialIndex );
+				vec3     emission      = material.emissiveIntensity * material.emissive;
+
+				if ( emission == vec3( 0.0 ) ) {
+
+					// @todo: turn this into a continuation ray
+					return bsdfSample_miss;
+
+				} else {
+
+					vec3 lightHitPoint = stepRayOrigin( bounceRay.origin, bounceRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
+
+					vec3 triNormal = normalOfSurfaceHit( surfaceHit );
+
+					vec3 a = texelFetch1D( bvh.position, surfaceHit.faceIndices.x ).xyz;
+					vec3 b = texelFetch1D( bvh.position, surfaceHit.faceIndices.y ).xyz;
+					vec3 c = texelFetch1D( bvh.position, surfaceHit.faceIndices.z ).xyz;
+
+					float triArea = 0.5 * length( cross( b - a, c - a ) );
+
+					if ( dot( bounceRay.direction, triNormal ) >= 0.0 ) {
+					
+						return bsdfSample_miss;
+
+					}
+
+					float invLightDistSquared = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
+					float invLightPdf         = invLightDistSquared * triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
+					float lightPdf            = 1.0 / invLightPdf;
+
+					float phat             = dot( scatterRec.color * emission, luma );
+					float misWeight        = scatterRec.pdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
+					float resamplingWeight = misWeight * phat / scatterRec.pdf;
+
+					RisSample samp;
+
+					samp.pathX1           = pathX1;
+					samp.pathX2           = vec4( lightHitPoint, float( materialIndex ) );
+					samp.pathX2_normal    = vec4( triNormal, 1.0 );
+					samp.resamplingWeight = resamplingWeight;
+
+					addSample( reservoir, samp, phat, rand( 18 ) );
+
+					return bsdfSample_lightHit;
+
+				}
+
+			}
+
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
 			/*
@@ -644,73 +721,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				int M_bsdf = 1; // override the uniform, @todo: remove the uniform...
 
 				// NEE
-				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf );
-
-				{
-					// Use exactly one bsdf sample. If the direction strikes a
-					// light source, we'll use it directly for MIS and forgo
-					// indirect light paths for this sample. Otherwise, we'll
-					// take that as pathX2 and continue to sample for pathX3.
-
-					ScatterRecord scatterRec = bsdfSample( -ray.direction, surf, rand2( 15 ) );
-
-					SurfaceHit surfaceHit;
-
-					Ray bounceRay = Ray( hitPoint, scatterRec.direction );
-					int hitType   = traceScene( bounceRay, surfaceHit );
-
-					if ( hitType != SURFACE_HIT ) {
-					
-					} else {
-
-						uint     materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-						Material material      = readMaterialInfo( materials, materialIndex );
-						vec3     emission      = material.emissiveIntensity * material.emissive;
-
-						if ( emission == vec3( 0.0 ) ) {
-
-						} else {
-
-							vec3 lightHitPoint = stepRayOrigin( bounceRay.origin, bounceRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
-
-							vec3 triNormal = normalOfSurfaceHit( surfaceHit );
-
-							vec3 a = texelFetch1D( bvh.position, surfaceHit.faceIndices.x ).xyz;
-							vec3 b = texelFetch1D( bvh.position, surfaceHit.faceIndices.y ).xyz;
-							vec3 c = texelFetch1D( bvh.position, surfaceHit.faceIndices.z ).xyz;
-
-							float triArea = 0.5 * length( cross( b - a, c - a ) );
-
-							if ( dot( bounceRay.direction, triNormal ) >= 0.0 ) {
-							
-								// Wrong side of light
-
-							} else {
-
-								float invLightDistSquared = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
-								float invLightPdf         = invLightDistSquared * triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
-								float lightPdf            = 1.0 / invLightPdf;
-
-								float phat             = dot( scatterRec.color * emission, luma );
-								float misWeight        = scatterRec.pdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
-								float resamplingWeight = misWeight * phat / scatterRec.pdf;
-
-								RisSample samp;
-
-								samp.pathX1           = pathX1;
-								samp.pathX2           = vec4( lightHitPoint, float( materialIndex ) );
-								samp.pathX2_normal    = vec4( triNormal, 1.0 );
-								samp.resamplingWeight = resamplingWeight;
-
-								addSample( reservoir, samp, phat, rand( 18 ) );
-
-							}
-
-						}
-
-					}
-
-				}
+				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf );	
+				addBsdfSample( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf );	
 
 				if ( !reservoir.valid ) {
 
