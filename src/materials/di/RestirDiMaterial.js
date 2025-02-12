@@ -422,7 +422,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
 					samp.pathX2_Li        = vec3( 0.0 ); // path terminates
 					samp.resamplingWeight = resamplingWeight;
-					// samp.pathX2_wi        = vec3( 0.0 ); // path terminates
+					samp.pathX2_wi        = vec3( 0.0 ); // path terminates
 
 					addSample( reservoir, samp, phat, rand( ++randBase ) );
 				
@@ -499,7 +499,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = pathX2;
 					samp.pathX2_Li        = vec3( 0.0 ); // path terminates
 					samp.resamplingWeight = resamplingWeight;
-					// samp.pathX2_wi        = vec3( 0.0 ); // path terminates
+					samp.pathX2_wi        = vec3( 0.0 ); // path terminates
 
 					addSample( reservoir, samp, phat, rand( ++randBase ) );
 
@@ -529,7 +529,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			layout(location = 4) out vec4 pathX2;
 			layout(location = 5) out vec4 pathInfo;
 			layout(location = 6) out vec4 pathX2_Li; // w component unused
-			// layout(location = 7) out vec4 pathX2_wi; // w component unused
+			layout(location = 7) out vec4 pathX2_wi; // w component unused
 
 			uniform int M_area; // number of uniform random area light samples
 			uniform int M_bsdf; // number of bsdf samples
@@ -671,13 +671,15 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				int randBase = 0;
 
 				// Initialize outputs
-				surfaceHit_faceIndices     = vec4( 0.0, 0.0, 0.0, 0.0 );
-				surfaceHit_barycoord_side  = vec4( 0.0, 0.0, 0.0, 0.0 );
-				surfaceHit_faceNormal_dist = vec4( 0.0, 0.0, 0.0, 0.0 );
+				surfaceHit_faceIndices     = vec4( 0.0 );
+				surfaceHit_barycoord_side  = vec4( 0.0 );
+				surfaceHit_faceNormal_dist = vec4( 0.0 );
 
-				pathX1   = vec4( 0.0, 0.0, 0.0, 0.0 );
-				pathX2   = vec4( 0.0, 0.0, 0.0, 0.0 );
-				pathInfo = vec4( 0.0, 0.0, 0.0, 0.0 );
+				pathX1    = vec4( 0.0 );
+				pathX2    = vec4( 0.0 );
+				pathInfo  = vec4( 0.0 );
+				pathX2_Li = vec4( 0.0 );
+				pathX2_wi = vec4( 0.0 );
 
 				pathInfo.x = 1.0;
 
@@ -767,7 +769,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = reservoir.sampleOut.pathX2;
 					samp.pathX2_Li        = vec3( 0.0 ); // path terminates
 					samp.resamplingWeight = 1.0 * reservoir.phatOut * ( reservoir.wSum / reservoir.phatOut );
-					// samp.pathX2_wi     = vec3( 0.0 ); // path terminates
+					samp.pathX2_wi     = vec3( 0.0 ); // path terminates
 
 					addSample( reservoir2, samp, reservoir.phatOut, rand( ++randBase ) );
 
@@ -784,7 +786,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathInfo.y    = reservoir2.wSum / reservoir.phatOut;
 				pathInfo.z    = reservoir2.phatOut;
 				pathX2_Li.xyz = reservoir2.sampleOut.pathX2_Li;
-				// pathX2_wi.xyz = reservoir2.sampleOut.pathX2_wi;
+				pathX2_wi.xyz = reservoir2.sampleOut.pathX2_wi;
 
 				// @todo: insert visibility pass
 

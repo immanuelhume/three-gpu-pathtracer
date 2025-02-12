@@ -112,11 +112,11 @@ export class RestirPathTracer {
             // randomness uniforms
             seed: { value: 0 },
             sobolTexture: { value: null },
-            stratifiedTexture: { value: new StratifiedSamplesTexture() },
-            stratifiedOffsetTexture: { value: new BlueNoiseTexture( 64, 1 ) },
+            // stratifiedTexture: { value: new StratifiedSamplesTexture() },
+            // stratifiedOffsetTexture: { value: new BlueNoiseTexture( 64, 1 ) },
 
         };
-        this.sharedUniforms.stratifiedTexture.value.init( 20, 24 ); // @todo: what should this be?
+        // this.sharedUniforms.stratifiedTexture.value.init( 20, 24 ); // @todo: what should this be?
 
         this.passGenSample = new FullScreenQuad( new RestirDiMaterial( Pass.GenSample, { blending: THREE.NoBlending } ) );
         // this.passSpatialReuse = new FullScreenQuad( new RestirDiMaterial( Pass.SpatialReuse, { blending: THREE.NoBlending } ) );
@@ -170,7 +170,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 7,
+			count: 8,
 
 		} );
         // this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
@@ -305,7 +305,7 @@ export class RestirPathTracer {
         this.sharedUniforms.opacity.value = THREE.NoBlending;
         this.sharedUniforms.resolution.value.set( this.pingTarget.width, this.pingTarget.height ); // @todo: subwidth, as in the original code?
         this.sharedUniforms.sobolTexture.value = this.sobolTarget.texture;
-        this.sharedUniforms.stratifiedTexture.value.next();
+        // this.sharedUniforms.stratifiedTexture.value.next();
         this.sharedUniforms.seed.value++;
 
         // generate sample
@@ -359,7 +359,7 @@ export class RestirPathTracer {
         this.passToneMap.material.uniforms.map.value = this.pongTarget.texture;
         this.passToneMap.render( this.renderer );
 
-        this.nSamples++;
+        // this.nSamples++;
 
         [ this.pongTarget, this.pungTarget ] = [ this.pungTarget, this.pongTarget ];
         [ this.temporalReuseTargetA, this.temporalReuseTargetB ] = [ this.temporalReuseTargetB, this.temporalReuseTargetA ];
