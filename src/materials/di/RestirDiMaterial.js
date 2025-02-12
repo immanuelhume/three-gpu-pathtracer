@@ -508,6 +508,15 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 			}
+
+			vec4 getPathX1( SurfaceHit surfaceHit, Ray primaryRay ) {
+
+				uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+				vec3 pathX1        = stepRayOrigin( primaryRay.origin, primaryRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
+
+				return vec4( pathX1, float( materialIndex ) );
+
+			}
 			
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
@@ -525,11 +534,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			layout(location = 0) out vec4 surfaceHit_faceIndices;
 			layout(location = 1) out vec4 surfaceHit_barycoord_side;
 			layout(location = 2) out vec4 surfaceHit_faceNormal_dist;
-			layout(location = 3) out vec4 pathX1;
-			layout(location = 4) out vec4 pathX2;
-			layout(location = 5) out vec4 pathInfo;
-			layout(location = 6) out vec4 pathX2_Li; // w component unused
-			layout(location = 7) out vec4 pathX2_wi; // w component unused
+			layout(location = 3) out vec4 pathX2;
+			layout(location = 4) out vec4 pathInfo;
+			layout(location = 5) out vec4 pathX2_Li; // w component unused
+			layout(location = 6) out vec4 pathX2_wi; // w component unused
 
 			uniform int M_area; // number of uniform random area light samples
 			uniform int M_bsdf; // number of bsdf samples
@@ -541,11 +549,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D surfaceHit_faceIndices;
 			uniform sampler2D surfaceHit_barycoord_side;
 			uniform sampler2D surfaceHit_faceNormal_dist;
-			uniform sampler2D pathX1_in;
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
 			uniform sampler2D pathX2_Li_in;
-			// uniform sampler2D pathX2_wi_in;
+			uniform sampler2D pathX2_wi_in;
 
 			layout(location = 0) out vec4 pathX2_out;
 			layout(location = 1) out vec4 pathInfo_out;
@@ -585,7 +592,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D surfaceHit_faceIndices;
 			uniform sampler2D surfaceHit_barycoord_side;
 			uniform sampler2D surfaceHit_faceNormal_dist;
-			uniform sampler2D pathX1;
 			uniform sampler2D pathX2;
 			uniform sampler2D pathInfo;
 			uniform sampler2D pathX2_Li;
@@ -595,13 +601,20 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#if RESTIR_PASS == PASS_SPATIAL_REUSE || RESTIR_PASS == PASS_TEMPORAL_REUSE || RESTIR_PASS == PASS_SHADE_PIXEL
 
-			SurfaceRecord readSurfaceRecord( ivec2 xy, out int res ) {
+			SurfaceHit readSurfaceHit( ivec2 xy ) {
 
 				uvec4 faceIndices    = uvec4( texelFetch( surfaceHit_faceIndices    , xy, 0 ) );
 				vec4 barycoord_side  =        texelFetch( surfaceHit_barycoord_side , xy, 0 );
 				vec4 faceNormal_dist =        texelFetch( surfaceHit_faceNormal_dist, xy, 0 );
 
 				SurfaceHit surfaceHit = SurfaceHit( faceIndices, barycoord_side.xyz, faceNormal_dist.xyz, barycoord_side.w, faceNormal_dist.w );
+
+				return surfaceHit;
+			}
+
+			SurfaceRecord readSurfaceRecord( ivec2 xy, out int res ) {
+
+				SurfaceHit surfaceHit = readSurfaceHit( xy );
 
 				uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
 				Material material  = readMaterialInfo( materials, materialIndex );
@@ -611,6 +624,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				res = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
 
 				return surf;
+
 			}
 
 			SurfaceRecord readSurfaceRecord( ivec2 xy ) {
@@ -675,7 +689,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				surfaceHit_barycoord_side  = vec4( 0.0 );
 				surfaceHit_faceNormal_dist = vec4( 0.0 );
 
-				pathX1    = vec4( 0.0 );
 				pathX2    = vec4( 0.0 );
 				pathInfo  = vec4( 0.0 );
 				pathX2_Li = vec4( 0.0 );
@@ -697,6 +710,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					
 				}
 
+				vec4 pathX1 = getPathX1( surfaceHit, ray );
+
 				SurfaceRecord surf;
 				{
 
@@ -713,15 +728,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					}
 
-					pathX1.w = float( materialIndex );
-
 				}
 
-				vec3 hitPoint = stepRayOrigin( ray.origin, ray.direction, surfaceHit.faceNormal, surfaceHit.dist );
-
 				// Record G buffer
-
-				pathX1.xyz = hitPoint;
 
 				surfaceHit_faceIndices     = vec4( surfaceHit.faceIndices );
 				surfaceHit_barycoord_side  = vec4( surfaceHit.barycoord, surfaceHit.side );
@@ -769,7 +778,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					samp.pathX2           = reservoir.sampleOut.pathX2;
 					samp.pathX2_Li        = vec3( 0.0 ); // path terminates
 					samp.resamplingWeight = 1.0 * reservoir.phatOut * ( reservoir.wSum / reservoir.phatOut );
-					samp.pathX2_wi     = vec3( 0.0 ); // path terminates
+					samp.pathX2_wi        = vec3( 0.0 ); // path terminates
 
 					addSample( reservoir2, samp, reservoir.phatOut, rand( ++randBase ) );
 
@@ -805,11 +814,14 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				int randBase = 2000;
 
 				vec4 pathX0    = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
-				vec4 pathX1    = texelFetch( pathX1_in, ivec2( gl_FragCoord.xy ), 0 );
 				vec4 pathX2    = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
 				vec4 pathInfo  = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 				vec4 pathX2_Li = texelFetch( pathX2_Li_in, ivec2( gl_FragCoord.xy ), 0 );
-				// vec4 pathX2_wi = texelFetch( pathX2_wi_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX2_wi = texelFetch( pathX2_wi_in, ivec2( gl_FragCoord.xy ), 0 );
+
+				SurfaceHit surfaceHit = readSurfaceHit( ivec2( gl_FragCoord.xy ) );
+				Ray        primaryRay = getCameraRay2();
+				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
 				// "default values"
 				pathX2_out   = pathX2;
@@ -819,9 +831,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hasPrevFrame == 0 ) return;
 
-				vec4 clip_prev = cameraProjectionMatrixPrev * invCameraWorldMatrixPrev * vec4( pathX1.xyz, 1.0 );
-				clip_prev /= clip_prev.w;
-				vec2 uv_prev = 0.5 * clip_prev.xy + 0.5;
+				vec4 clip_prev  = cameraProjectionMatrixPrev * invCameraWorldMatrixPrev * vec4( pathX1.xyz, 1.0 );
+				     clip_prev /= clip_prev.w;
+
+				vec2 uv_prev        = 0.5 * clip_prev.xy + 0.5;
 				vec2 fragCoord_prev = uv_prev * resolution;
 
 				vec4 pathX2_prev    = texelFetch( pathX2_in_prev, ivec2( fragCoord_prev ), 0 );
@@ -874,7 +887,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						samp.pathX2           = pathX2;
 						samp.pathX2_Li        = pathX2_Li.xyz;
 						samp.resamplingWeight = resamplingWeight;
-						// samp.pathX2_wi        = pathX2_wi.xyz;
+						samp.pathX2_wi        = pathX2_wi.xyz;
 
 						addSample( reservoir, samp, pathInfo.z, rand( ++randBase ) );
 
@@ -953,8 +966,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
-				vec4 pathX1 = texelFetch( pathX1, ivec2( gl_FragCoord.xy ), 0 );
 				vec4 pathX2 = texelFetch( pathX2, ivec2( gl_FragCoord.xy ), 0 );
+
+				SurfaceHit surfaceHit = readSurfaceHit( ivec2( gl_FragCoord.xy ) );
+				Ray        primaryRay = getCameraRay2();
+				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
 				float unbiasedContribWeight = pathInfo.y;
 
