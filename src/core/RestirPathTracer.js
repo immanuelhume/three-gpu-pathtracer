@@ -192,7 +192,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 3,
+			count: 4,
 
 		} );
         this.temporalReuseTargetB = new WebGLRenderTarget( 1, 1, {
@@ -203,7 +203,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 3,
+			count: 4,
 
 		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );

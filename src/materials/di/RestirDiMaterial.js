@@ -557,7 +557,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			layout(location = 0) out vec4 pathX2_out;
 			layout(location = 1) out vec4 pathInfo_out;
 			layout(location = 2) out vec4 pathX2_Li_out;
-			// layout(location = 3) out vec4 pathX2_wi_out;
+			layout(location = 3) out vec4 pathX2_wi_out;
 
 			#endif
 
@@ -567,7 +567,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D pathX2_in_prev;
 			uniform sampler2D pathInfo_in_prev;
 			uniform sampler2D pathX2_Li_in_prev;
-			// uniform sampler2D pathX2_wi_in_prev;
+			uniform sampler2D pathX2_wi_in_prev;
 
 			#endif
 
@@ -576,12 +576,12 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
 			uniform sampler2D pathX2_Li_in;
-			// uniform sampler2D pathX2_wi_in;
+			uniform sampler2D pathX2_wi_in;
 
 			layout(location = 0) out vec4 pathX2_out;
 			layout(location = 1) out vec4 pathInfo_out;
 			layout(location = 2) out vec4 pathX2_Li_out;
-			// layout(location = 3) out vec4 pathX2_wi_out;
+			layout(location = 3) out vec4 pathX2_wi_out;
 
 			#endif
 
@@ -595,7 +595,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D pathX2;
 			uniform sampler2D pathInfo;
 			uniform sampler2D pathX2_Li;
-			// uniform sampler2D pathX2_wi;
+			uniform sampler2D pathX2_wi;
 
 			#endif
 
@@ -827,7 +827,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2_out   = pathX2;
 				pathInfo_out = pathInfo;
 				pathX2_Li_out = pathX2_Li;
-				// pathX2_wi_out = pathX2_wi;
+				pathX2_wi_out = pathX2_wi;
 
 				if ( hasPrevFrame == 0 ) return;
 
@@ -925,7 +925,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2_out          = reservoir.sampleOut.pathX2;
 				pathInfo_out.y      = reservoir.wSum / reservoir.phatOut;
 				pathX2_Li_out.xyz   = reservoir.sampleOut.pathX2_Li;
-				// pathX2_wi_out.xyz   = reservoir.sampleOut.pathX2_wi;
+				pathX2_wi_out.xyz   = reservoir.sampleOut.pathX2_wi;
 
 				#endif
 
@@ -941,7 +941,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2_out    = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
 				pathInfo_out  = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 				pathX2_Li_out = texelFetch( pathX2_Li_in, ivec2( gl_FragCoord.xy ), 0 );
-				// pathX2_wi_out = texelFetch( pathX2_wi_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX2_wi_out = texelFetch( pathX2_wi_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				#endif
 
@@ -968,18 +968,21 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
 				vec4 pathX2 = texelFetch( pathX2, ivec2( gl_FragCoord.xy ), 0 );
 
+				vec4 pathX2_Li = texelFetch( pathX2_Li, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX2_wi = texelFetch( pathX2_wi, ivec2( gl_FragCoord.xy ), 0 );
+
 				SurfaceHit surfaceHit = readSurfaceHit( ivec2( gl_FragCoord.xy ) );
 				Ray        primaryRay = getCameraRay2();
 				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
 				float unbiasedContribWeight = pathInfo.y;
 
-				int surfRecord_x1;
-				SurfaceRecord surf_x1 = readSurfaceRecord( ivec2( gl_FragCoord.xy ), surfRecord_x1 );
-				if ( surfRecord_x1 == SKIP_SURFACE ) {
+				int x1_surfRecord;
+				SurfaceRecord surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ), x1_surfRecord );
+				if ( x1_surfRecord == SKIP_SURFACE ) {
 
 					// @todo: what's the semantics of skipping a surface even
-					fragColor = vec4( surf_x1.emission, 1.0 );
+					fragColor = vec4( surf.emission, 1.0 );
 					return;
 
 				}
@@ -988,13 +991,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec3  wi       = normalize( pathX2.xyz - pathX1.xyz );
 				vec3  wo       = normalize( pathX0.xyz - pathX1.xyz );
 
-				if ( pathInfo.x < 1.0 || dot( wi, surf_x1.normal ) <= 0.0 ) {
+				if ( pathInfo.x < 1.0 || dot( wi, surf.normal ) <= 0.0 ) {
 
 					// Light is behind the surface or no sample selected
 					//
 					// @todo: support transmission...
 
-					fragColor = vec4( surf_x1.emission, 1.0 );
+					fragColor = vec4( surf.emission, 1.0 );
 					return;
 
 				}
@@ -1009,7 +1012,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					if ( pathX2Hit.dist < x1x2dist - 0.001 ) {
 
 						// x2 is blocked
-						fragColor = vec4( surf_x1.emission, 1.0 );
+						fragColor = vec4( surf.emission, 1.0 );
 
 					} else {
 
@@ -1020,11 +1023,30 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						}
 						vec3 x2_emission = x2_material.emissiveIntensity * x2_material.emissive;
 
-						vec3 x2_sampleColor;
-						vec3 x2_wo = -wi;
+						// Radiance exiting x2 is at least x2's emission.
+						vec3 x2_Lo = x2_emission;
+
+						if ( pathX2_wi != vec4( 0.0 ) ) {
+
+							SurfaceRecord x2_surf;
+							getSurfaceRecord( x2_material, pathX2Hit, attributesArray, 0.0, x2_surf );
+
+							vec3 x2_wo = -wi;
+							vec3 x2_wi = pathX2_wi.xyz;
+
+							vec3 x2_sampleColor;
+							float x2_materialPdf = bsdfResult( x2_wo, x2_wi, x2_surf, x2_sampleColor );
+
+							if ( x2_materialPdf > 0.0 ) {
+
+								x2_Lo += x2_sampleColor * pathX2_Li.xyz;
+
+							}
+
+						}
 
 						vec3 sampleColor;
-						float materialPdf = bsdfResult( wo, wi, surf_x1, sampleColor );
+						float materialPdf = bsdfResult( wo, wi, surf, sampleColor );
 
 						if ( materialPdf > 0.0 ) {
 
@@ -1034,7 +1056,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 							// @todo: include pathX2_Li;
 
-							fragColor = vec4( ( surf_x1.emission + sampleColor * ( x2_emission ) ) * unbiasedContribWeight, 1.0 );
+							fragColor = vec4( ( surf.emission + sampleColor * x2_Lo ) * unbiasedContribWeight, 1.0 );
 
 						} else {
 
@@ -1042,7 +1064,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							// the light is beneath the surface, which we have
 							// already checked for.
 
-							fragColor = vec4( surf_x1.emission, 1.0 );
+							fragColor = vec4( surf.emission, 1.0 );
 
 						}
 
@@ -1052,7 +1074,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					// Shadow ray missed.
 
-					fragColor = vec4( surf_x1.emission, 1.0 );
+					fragColor = vec4( surf.emission, 1.0 );
 
 				}
 
