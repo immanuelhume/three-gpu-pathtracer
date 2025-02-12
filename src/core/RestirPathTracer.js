@@ -5,7 +5,7 @@ import { MATERIAL_PIXELS } from '../uniforms/MaterialsTexture.js';
 import { SobolNumberMapGenerator } from '../utils/SobolNumberMapGenerator.js';
 import { getTextures } from './utils/sceneUpdateUtils.js';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
-import { NoBlending, WebGLRenderer, WebGLRenderTarget, RGBAFormat, FloatType, NearestFilter, Vector2, Matrix4, HalfFloatType, ClampToEdgeWrapping } from 'three';
+import { NoBlending, WebGLRenderer, WebGLRenderTarget, WebGLArrayRenderTarget, RGBAFormat, FloatType, NearestFilter, Vector2, Matrix4, HalfFloatType, ClampToEdgeWrapping } from 'three';
 import { MeshBVHUniformStruct, UIntVertexAttributeTexture, BVHShaderGLSL, BVHWorker } from 'three-mesh-bvh';
 
 // uniforms
@@ -170,7 +170,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 6,
+			count: 7,
 
 		} );
         // this.spatialReuseTarget = new WebGLRenderTarget( 1, 1, {
@@ -192,7 +192,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 2,
+			count: 3,
 
 		} );
         this.temporalReuseTargetB = new WebGLRenderTarget( 1, 1, {
@@ -203,7 +203,7 @@ export class RestirPathTracer {
 			magFilter: NearestFilter,
 			minFilter: NearestFilter,
             internalFormat: 'RGBA32F',
-			count: 2,
+			count: 3,
 
 		} );
         this.sobolTarget = new SobolNumberMapGenerator().generate( renderer );
@@ -252,6 +252,8 @@ export class RestirPathTracer {
             pathX1_in: { value: this.samplesTarget.textures[ 3 ] },
             pathX2_in: { value: this.samplesTarget.textures[ 4 ] },
             pathInfo_in: { value: this.samplesTarget.textures[ 5 ] },
+            pathInfo_Li_in: { value: this.samplesTarget.textures[ 6 ] },
+            // pathInfo_wi_in: { value: this.samplesTarget.textures[ 7 ] },
 
         };
         this.passTemporalReuse.material.defines = {
@@ -269,8 +271,6 @@ export class RestirPathTracer {
             surfaceHit_barycoord_side: { value: this.samplesTarget.textures[ 1 ] },
             surfaceHit_faceNormal_dist: { value: this.samplesTarget.textures[ 2 ] },
             pathX1: { value: this.samplesTarget.textures[ 3 ] },
-            pathX2: { value: this.temporalReuseTargetA.textures[ 0 ] },
-            pathInfo: { value: this.temporalReuseTargetA.textures[ 1 ] },
 
         };
         this.passShadePixel.material.defines = {
@@ -321,6 +321,8 @@ export class RestirPathTracer {
         // temporal reuse
         this.passTemporalReuse.material.uniforms.pathX2_in_prev = { value: this.temporalReuseTargetB.textures[ 0 ] };
         this.passTemporalReuse.material.uniforms.pathInfo_in_prev = { value: this.temporalReuseTargetB.textures[ 1 ] };
+        this.passTemporalReuse.material.uniforms.pathX2_Li_in_prev = { value: this.temporalReuseTargetB.textures[ 2 ] };
+        // this.passTemporalReuse.material.uniforms.pathX2_wi_in_prev = { value: this.temporalReuseTargetB.textures[ 3 ] };
         this.passTemporalReuse.material.onBeforeRender();
         this.renderer.setRenderTarget( this.temporalReuseTargetA );
         this.passTemporalReuse.render( this.renderer );
@@ -328,6 +330,8 @@ export class RestirPathTracer {
         // save current sample
         this.passSaveSample.material.uniforms.pathX2_in = { value: this.temporalReuseTargetA.textures[ 0 ] };
         this.passSaveSample.material.uniforms.pathInfo_in = { value: this.temporalReuseTargetA.textures[ 1 ] };
+        this.passSaveSample.material.uniforms.pathX2_Li_in = { value: this.temporalReuseTargetA.textures[ 2 ] };
+        // this.passSaveSample.material.uniforms.pathX2_wi_in = { value: this.temporalReuseTargetA.textures[ 3 ] };
         this.passSaveSample.material.onBeforeRender();
         this.renderer.setRenderTarget( this.temporalReuseTargetB );
         this.passSaveSample.render( this.renderer );
@@ -335,6 +339,8 @@ export class RestirPathTracer {
         // shade pixel
         this.passShadePixel.material.uniforms.pathX2 = { value: this.temporalReuseTargetA.textures[ 0 ] };
         this.passShadePixel.material.uniforms.pathInfo = { value: this.temporalReuseTargetA.textures[ 1 ] };
+        this.passSaveSample.material.uniforms.pathX2_Li = { value: this.temporalReuseTargetA.textures[ 2 ] };
+        // this.passSaveSample.material.uniforms.pathX2_wi = { value: this.temporalReuseTargetA.textures[ 3 ] };
         this.passShadePixel.material.onBeforeRender();
         this.renderer.setRenderTarget( this.pingTarget );
         this.passShadePixel.render( this.renderer );
@@ -353,7 +359,7 @@ export class RestirPathTracer {
         this.passToneMap.material.uniforms.map.value = this.pongTarget.texture;
         this.passToneMap.render( this.renderer );
 
-        // this.nSamples++;
+        this.nSamples++;
 
         [ this.pongTarget, this.pungTarget ] = [ this.pungTarget, this.pongTarget ];
         [ this.temporalReuseTargetA, this.temporalReuseTargetB ] = [ this.temporalReuseTargetB, this.temporalReuseTargetA ];
