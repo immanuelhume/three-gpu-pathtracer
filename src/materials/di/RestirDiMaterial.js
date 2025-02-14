@@ -615,8 +615,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				pathX2    = vec4( 0.0 );
 				pathInfo  = vec4( 0.0 );
-				pathX2_Li = vec4( 0.0 );
-				pathX2_wi = vec4( 0.0 );
+				pathX2_Li = vec4( 0.0, 0.0, 0.0, 1.0 );
+				pathX2_wi = vec4( 0.0, 0.0, 0.0, 1.0 );
 
 				pathInfo.x = 1.0;
 
@@ -698,6 +698,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				Material cont_material      = readMaterialInfo( materials, cont_materialIndex );
 				vec3     cont_emission      = cont_material.emissiveIntensity * cont_material.emissive;
 
+				vec4 cont_pathX2 = vec4( 0.0 );
+
+				cont_pathX2.xyz = stepRayOrigin( cont_ray.origin, cont_ray.direction, cont_surfaceHit.faceNormal, cont_surfaceHit.dist );
+				cont_pathX2.w   = float( cont_materialIndex );
+
 				if ( cont_emission != vec3( 0.0 ) ) {
 
 					// Our continutation ray hit a light source. Add it to the reservoir.
@@ -720,11 +725,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						float misWeight        = scatterRec.pdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
 						float resamplingWeight = misWeight * phat / scatterRec.pdf;
 
-						vec4 cont_pathX2 = vec4( 0.0 );
-
-						cont_pathX2.xyz = stepRayOrigin( cont_ray.origin, cont_ray.direction, cont_surfaceHit.faceNormal, cont_surfaceHit.dist );
-						cont_pathX2.w   = float( cont_materialIndex );
-
 						RisSample samp;
 
 						samp.pathX2           = cont_pathX2;
@@ -738,7 +738,64 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 				
-				// @todo: sample area lights from the continuation point.
+				{
+					// Let's sample one area light from [cont_pathX2] (NEE) and
+					// then trace a shadow ray to account for visiblitiy. This
+					// allows us to collect [pathX2_Li].
+
+					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( ++randBase ) );
+
+					vec3 wo         = -cont_ray.direction;
+					vec3  wi        = normalize( emTri.barycoord - cont_pathX2.xyz );
+					float lightDist = length( emTri.barycoord - cont_pathX2.xyz );
+
+					if ( dot( wi, emTri.normal ) < 0.0 ) {
+
+						// Light is facing the right way. Now we should trace a
+						// shadow ray and see if the light is occluded.
+
+						SurfaceHit surfaceHit;
+
+						Ray shadowRay = Ray( cont_pathX2.xyz, wi );
+						int hitType   = traceScene( shadowRay, surfaceHit );
+
+						if ( hitType == SURFACE_HIT && surfaceHit.dist >= lightDist - 0.01 ) {
+
+							// Light is not occluded. We have a length 4 path!
+
+							float invLightDistSquared = 1.0 / ( lightDist * lightDist );
+							float invLightPdf         = invLightDistSquared * emTri.tri.area * dot( -wi, emTri.normal ) * float( emissiveTriangles.count );
+
+							uint     emTriMaterialIndex = uTexelFetch1D( materialIndexAttribute, emTri.tri.indices.x ).r;
+							Material lightMaterial      = readMaterialInfo( materials, emTriMaterialIndex );
+							vec3     emission           = lightMaterial.emissiveIntensity * lightMaterial.emissive;
+
+							SurfaceRecord cont_surf;
+							getSurfaceRecord( cont_material, cont_surfaceHit, attributesArray, 0.0, cont_surf );
+
+							vec3 cont_sampleColor;
+
+							float materialPdf = bsdfResult( wo, wi, cont_surf, cont_sampleColor );
+							vec3  Lo          = cont_sampleColor * emission;
+
+							float phat             = dot( scatterRec.color * Lo, luma );
+							float misWeight        = 1.0;
+							float resamplingWeight = misWeight * phat * invLightPdf / scatterRec.pdf;
+
+							RisSample samp;
+
+							samp.pathX2           = vec4( cont_pathX2 );
+							samp.pathX2_Li        = emission;
+							samp.resamplingWeight = resamplingWeight;
+							samp.pathX2_wi        = wi;
+
+							addSample( reservoir, samp, phat, rand( ++randBase ) );
+
+						}
+					
+					}
+
+				}
 
 				if ( !reservoir.valid ) {
 
@@ -753,7 +810,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2_Li.xyz = reservoir.sampleOut.pathX2_Li;
 				pathX2_wi.xyz = reservoir.sampleOut.pathX2_wi;
 
-				// @todo: insert visibility pass
+				// @todo: insert visibility pass?
 
 				#endif
 				
@@ -780,8 +837,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
 				// "default values"
-				pathX2_out   = pathX2;
-				pathInfo_out = pathInfo;
+				pathX2_out    = pathX2;
+				pathInfo_out  = pathInfo;
 				pathX2_Li_out = pathX2_Li;
 				pathX2_wi_out = pathX2_wi;
 
