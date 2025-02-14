@@ -433,82 +433,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			const int bsdfSample_lightHit     = 1;
 			const int bsdfSample_continuation = 2;
 
-			/* Adds a single bsdf sample. */
-			int addBsdfSample(
-				inout Reservoir     reservoir,
-				      int           M_area,
-				      int           M_bsdf,
-				      vec4          pathX1, // not literal pathX1, but relative
-				      vec3          wo,
-				      SurfaceRecord surf,
-				out   vec4          pathX2,
-				inout int           randBase
-			) {
-
-				ScatterRecord scatterRec = bsdfSample( wo, surf, rand2( ++randBase ) );
-
-				SurfaceHit surfaceHit;
-
-				Ray bounceRay = Ray( pathX1.xyz, scatterRec.direction );
-				int hitType   = traceScene( bounceRay, surfaceHit );
-
-				if ( hitType != SURFACE_HIT ) {
-
-					return bsdfSample_miss;
-				
-				}
-
-				uint     materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-				Material material      = readMaterialInfo( materials, materialIndex );
-				vec3     emission      = material.emissiveIntensity * material.emissive;
-
-				pathX2.xyz = stepRayOrigin( bounceRay.origin, bounceRay.direction, surfaceHit.faceNormal, surfaceHit.dist );
-				pathX2.w   = float( materialIndex );
-
-				if ( emission == vec3( 0.0 ) ) {
-
-					// @todo: turn this into a continuation ray
-					return bsdfSample_continuation;
-
-				} else {
-
-					vec3 triNormal = normalOfSurfaceHit( surfaceHit );
-
-					vec3 a = texelFetch1D( bvh.position, surfaceHit.faceIndices.x ).xyz;
-					vec3 b = texelFetch1D( bvh.position, surfaceHit.faceIndices.y ).xyz;
-					vec3 c = texelFetch1D( bvh.position, surfaceHit.faceIndices.z ).xyz;
-
-					float triArea = 0.5 * length( cross( b - a, c - a ) );
-
-					if ( dot( bounceRay.direction, triNormal ) >= 0.0 ) {
-					
-						return bsdfSample_miss;
-
-					}
-
-					float invLightDistSquared = 1.0 / ( surfaceHit.dist * surfaceHit.dist );
-					float invLightPdf         = invLightDistSquared * triArea * dot( -bounceRay.direction, triNormal ) * float( emissiveTriangles.count );
-					float lightPdf            = 1.0 / invLightPdf;
-
-					float phat             = dot( scatterRec.color * emission, luma );
-					float misWeight        = scatterRec.pdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
-					float resamplingWeight = misWeight * phat / scatterRec.pdf;
-
-					RisSample samp;
-
-					samp.pathX2           = pathX2;
-					samp.pathX2_Li        = vec3( 0.0 ); // path terminates
-					samp.resamplingWeight = resamplingWeight;
-					samp.pathX2_wi        = vec3( 0.0 ); // path terminates
-
-					addSample( reservoir, samp, phat, rand( ++randBase ) );
-
-					return bsdfSample_lightHit;
-
-				}
-
-			}
-
 			vec4 getPathX1( SurfaceHit surfaceHit, Ray primaryRay ) {
 
 				uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
@@ -636,8 +560,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			float targetFunc( SurfaceRecord surf, vec4 pathX0, vec4 pathX1, vec4 pathX2 ) {
 			
-				vec3 lightDir = normalize( pathX2.xyz - pathX1.xyz );
-				vec3 rayDir   = normalize( pathX1.xyz - pathX0.xyz );
+				vec3 wi = normalize( pathX2.xyz - pathX1.xyz );
+				vec3 wo = normalize( pathX0.xyz - pathX1.xyz );
 
 				Material lightMaterial;
 				{
@@ -647,7 +571,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec3 emission = lightMaterial.emissiveIntensity * lightMaterial.emissive;
 
 				vec3 sampleColor;
-				float materialPdf = bsdfResult( -rayDir, lightDir, surf, sampleColor );
+				float materialPdf = bsdfResult( wo, wi, surf, sampleColor );
 
 				float phat = dot( sampleColor * emission, luma );
 
@@ -743,13 +667,17 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// NEE
 				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, randBase );	
 
-				vec4 pathX2_continuation;
-				int bsdfSampleResult = addBsdfSample( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, pathX2_continuation, randBase );	
+				ScatterRecord scatterRec = bsdfSample( -ray.direction, surf, rand2( ++randBase ) );
 
-				if ( bsdfSampleResult == bsdfSample_miss || bsdfSampleResult == bsdfSample_lightHit ) {
+				SurfaceHit cont_surfaceHit;
 
-					// There is no continuation ray. So we end initial
-					// resampling here and it's more or less like ReSTIR DI.
+				Ray cont_ray     = Ray( pathX1.xyz, scatterRec.direction );
+				int cont_hitType = traceScene( cont_ray, cont_surfaceHit );
+
+				if ( cont_hitType != SURFACE_HIT ) {
+
+					// Continuation ray missed. Nothing else to do for initial
+					// resampling, we'll save our reservoir and continue.
 
 					if ( !reservoir.valid ) {
 
@@ -766,36 +694,64 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				// We have a continuation ray. First, let's extract a sample
-				// from the reservoir.
+				uint     cont_materialIndex = uTexelFetch1D( materialIndexAttribute, cont_surfaceHit.faceIndices.x ).r;
+				Material cont_material      = readMaterialInfo( materials, cont_materialIndex );
+				vec3     cont_emission      = cont_material.emissiveIntensity * cont_material.emissive;
 
-				Reservoir reservoir2 = initReservoir();
+				if ( cont_emission != vec3( 0.0 ) ) {
 
-				if ( reservoir.valid ) {
+					// Our continutation ray hit a light source. Add it to the reservoir.
 
-					RisSample samp;
+					vec3 triNormal = normalOfSurfaceHit( cont_surfaceHit );
 
-					samp.pathX2           = reservoir.sampleOut.pathX2;
-					samp.pathX2_Li        = vec3( 0.0 ); // path terminates
-					samp.resamplingWeight = 1.0 * reservoir.phatOut * ( reservoir.wSum / reservoir.phatOut );
-					samp.pathX2_wi        = vec3( 0.0 ); // path terminates
+					vec3 a = texelFetch1D( bvh.position, cont_surfaceHit.faceIndices.x ).xyz;
+					vec3 b = texelFetch1D( bvh.position, cont_surfaceHit.faceIndices.y ).xyz;
+					vec3 c = texelFetch1D( bvh.position, cont_surfaceHit.faceIndices.z ).xyz;
 
-					addSample( reservoir2, samp, reservoir.phatOut, rand( ++randBase ) );
+					float triArea = 0.5 * length( cross( b - a, c - a ) );
+
+					if ( dot( cont_ray.direction, triNormal ) < 0.0 ) {
+					
+						float invLightDistSquared = 1.0 / ( cont_surfaceHit.dist * cont_surfaceHit.dist );
+						float invLightPdf         = invLightDistSquared * triArea * dot( -cont_ray.direction, triNormal ) * float( emissiveTriangles.count );
+						float lightPdf            = 1.0 / invLightPdf;
+
+						float phat             = dot( scatterRec.color * cont_emission, luma );
+						float misWeight        = scatterRec.pdf / ( float( M_area ) * lightPdf + float( M_bsdf ) * scatterRec.pdf );
+						float resamplingWeight = misWeight * phat / scatterRec.pdf;
+
+						vec4 cont_pathX2 = vec4( 0.0 );
+
+						cont_pathX2.xyz = stepRayOrigin( cont_ray.origin, cont_ray.direction, cont_surfaceHit.faceNormal, cont_surfaceHit.dist );
+						cont_pathX2.w   = float( cont_materialIndex );
+
+						RisSample samp;
+
+						samp.pathX2           = cont_pathX2;
+						samp.pathX2_Li        = vec3( 0.0 ); // path terminates
+						samp.resamplingWeight = resamplingWeight;
+						samp.pathX2_wi        = vec3( 0.0 ); // path terminates
+
+						addSample( reservoir, samp, phat, rand( ++randBase ) );
+
+					}
 
 				}
+				
+				// @todo: sample area lights from the continuation point.
 
-				if ( !reservoir2.valid ) {
+				if ( !reservoir.valid ) {
 
 					pathInfo.x = 0.0;
 					return;
 
 				}
 
-				pathX2        = reservoir2.sampleOut.pathX2;
-				pathInfo.y    = reservoir2.wSum / reservoir.phatOut;
-				pathInfo.z    = reservoir2.phatOut;
-				pathX2_Li.xyz = reservoir2.sampleOut.pathX2_Li;
-				pathX2_wi.xyz = reservoir2.sampleOut.pathX2_wi;
+				pathX2        = reservoir.sampleOut.pathX2;
+				pathInfo.y    = reservoir.wSum / reservoir.phatOut;
+				pathInfo.z    = reservoir.phatOut;
+				pathX2_Li.xyz = reservoir.sampleOut.pathX2_Li;
+				pathX2_wi.xyz = reservoir.sampleOut.pathX2_wi;
 
 				// @todo: insert visibility pass
 
