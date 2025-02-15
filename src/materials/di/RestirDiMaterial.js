@@ -307,10 +307,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			struct RisSample {
 
-				vec4  pathX2;    // w component stores material index
-				vec3  pathX2_Li; // zero if pathX2 is from NEE
+				vec4  pathX2; // w component stores material index
+				vec4  pathX3; // zero if not sampled
 				float resamplingWeight;
-				vec3  pathX2_wi; // zero if pathX2 is from NEE
 
 			};
 
@@ -420,9 +419,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					RisSample samp;
 
 					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
-					samp.pathX2_Li        = vec3( 0.0 ); // path terminates
+					samp.pathX2           = vec4( 0.0 ); // path terminates
 					samp.resamplingWeight = resamplingWeight;
-					samp.pathX2_wi        = vec3( 0.0 ); // path terminates
 
 					addSample( reservoir, samp, phat, rand( ++randBase ) );
 				
@@ -460,8 +458,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			layout(location = 2) out vec4 surfaceHit_faceNormal_dist;
 			layout(location = 3) out vec4 pathX2;
 			layout(location = 4) out vec4 pathInfo;
-			layout(location = 5) out vec4 pathX2_Li; // w component unused
-			layout(location = 6) out vec4 pathX2_wi; // w component unused
+			layout(location = 5) out vec4 pathX3;
 
 			uniform int M_area; // number of uniform random area light samples
 			uniform int M_bsdf; // number of bsdf samples
@@ -475,13 +472,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D surfaceHit_faceNormal_dist;
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
-			uniform sampler2D pathX2_Li_in;
-			uniform sampler2D pathX2_wi_in;
+			uniform sampler2D pathX3_in;
 
 			layout(location = 0) out vec4 pathX2_out;
 			layout(location = 1) out vec4 pathInfo_out;
-			layout(location = 2) out vec4 pathX2_Li_out;
-			layout(location = 3) out vec4 pathX2_wi_out;
+			layout(location = 2) out vec4 pathX3_out;
 
 			#endif
 
@@ -490,8 +485,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			uniform sampler2D pathX2_in_prev;
 			uniform sampler2D pathInfo_in_prev;
-			uniform sampler2D pathX2_Li_in_prev;
-			uniform sampler2D pathX2_wi_in_prev;
+			uniform sampler2D pathX3_in_prev;
 
 			#endif
 
@@ -499,13 +493,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
-			uniform sampler2D pathX2_Li_in;
-			uniform sampler2D pathX2_wi_in;
+			uniform sampler2D pathX3_in;
 
 			layout(location = 0) out vec4 pathX2_out;
 			layout(location = 1) out vec4 pathInfo_out;
-			layout(location = 2) out vec4 pathX2_Li_out;
-			layout(location = 3) out vec4 pathX2_wi_out;
+			layout(location = 2) out vec4 pathX3_out;
 
 			#endif
 
@@ -518,8 +510,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			uniform sampler2D surfaceHit_faceNormal_dist;
 			uniform sampler2D pathX2;
 			uniform sampler2D pathInfo;
-			uniform sampler2D pathX2_Li;
-			uniform sampler2D pathX2_wi;
+			uniform sampler2D pathX3;
 
 			#endif
 
@@ -613,10 +604,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				surfaceHit_barycoord_side  = vec4( 0.0 );
 				surfaceHit_faceNormal_dist = vec4( 0.0 );
 
-				pathX2    = vec4( 0.0 );
-				pathInfo  = vec4( 0.0 );
-				pathX2_Li = vec4( 0.0, 0.0, 0.0, 1.0 );
-				pathX2_wi = vec4( 0.0, 0.0, 0.0, 1.0 );
+				pathX2   = vec4( 0.0 );
+				pathInfo = vec4( 0.0 );
+				pathX3   = vec4( 0.0 );
 
 				pathInfo.x = 1.0;
 
@@ -728,9 +718,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						RisSample samp;
 
 						samp.pathX2           = cont_pathX2;
-						samp.pathX2_Li        = vec3( 0.0 ); // path terminates
 						samp.resamplingWeight = resamplingWeight;
-						samp.pathX2_wi        = vec3( 0.0 ); // path terminates
+						samp.pathX3           = vec4( 0.0 ); // path terminates
 
 						addSample( reservoir, samp, phat, rand( ++randBase ) );
 
@@ -741,7 +730,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				{
 					// Let's sample one area light from [cont_pathX2] (NEE) and
 					// then trace a shadow ray to account for visiblitiy. This
-					// allows us to collect [pathX2_Li].
+					// allows us to avoid tracing this ray for later stages.
+					//
+					// It's essentially getting the incoming radiance at X2,
+					// without storing the full radiance.
 
 					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( ++randBase ) );
 
@@ -776,7 +768,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							vec3 cont_sampleColor;
 
 							float materialPdf = bsdfResult( wo, wi, cont_surf, cont_sampleColor );
-							vec3  Lo          = cont_sampleColor * emission;
+							vec3  Lo          = cont_emission + cont_sampleColor * emission;
 
 							float phat             = dot( scatterRec.color * Lo, luma );
 							float misWeight        = 1.0;
@@ -785,11 +777,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							RisSample samp;
 
 							samp.pathX2           = vec4( cont_pathX2 );
-							samp.pathX2_Li        = emission;
 							samp.resamplingWeight = resamplingWeight;
-							samp.pathX2_wi        = wi;
+							samp.pathX3           = vec4( emTri.barycoord, emTriMaterialIndex );
 
-							addSample( reservoir, samp, phat, rand( ++randBase ) );
+							// addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 						}
 					
@@ -807,8 +798,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2        = reservoir.sampleOut.pathX2;
 				pathInfo.y    = reservoir.wSum / reservoir.phatOut;
 				pathInfo.z    = reservoir.phatOut;
-				pathX2_Li.xyz = reservoir.sampleOut.pathX2_Li;
-				pathX2_wi.xyz = reservoir.sampleOut.pathX2_wi;
+				pathX3        = reservoir.sampleOut.pathX3;
 
 				// @todo: insert visibility pass?
 
@@ -826,21 +816,19 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				int randBase = 2000;
 
-				vec4 pathX0    = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
-				vec4 pathX2    = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
-				vec4 pathInfo  = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
-				vec4 pathX2_Li = texelFetch( pathX2_Li_in, ivec2( gl_FragCoord.xy ), 0 );
-				vec4 pathX2_wi = texelFetch( pathX2_wi_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX0   = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
+				vec4 pathX2   = texelFetch( pathX2_in  , ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathInfo = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX3   = texelFetch( pathX3_in  , ivec2( gl_FragCoord.xy ), 0 );
 
 				SurfaceHit surfaceHit = readSurfaceHit( ivec2( gl_FragCoord.xy ) );
 				Ray        primaryRay = getCameraRay2();
 				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
 				// "default values"
-				pathX2_out    = pathX2;
-				pathInfo_out  = pathInfo;
-				pathX2_Li_out = pathX2_Li;
-				pathX2_wi_out = pathX2_wi;
+				pathX2_out   = pathX2;
+				pathInfo_out = pathInfo;
+				pathX3_out   = pathX3;
 
 				if ( hasPrevFrame == 0 ) return;
 
@@ -850,17 +838,14 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec2 uv_prev        = 0.5 * clip_prev.xy + 0.5;
 				vec2 fragCoord_prev = uv_prev * resolution;
 
-				vec4 pathX2_prev    = texelFetch( pathX2_in_prev, ivec2( fragCoord_prev ), 0 );
-				vec4 pathInfo_prev  = texelFetch( pathInfo_in_prev, ivec2( fragCoord_prev ), 0 );
-				vec4 pathX2_Li_prev = texelFetch( pathX2_Li_in_prev, ivec2( fragCoord_prev ), 0 );
-				// vec4 pathX2_wi_prev = texelFetch( pathX2_wi_in_prev, ivec2( fragCoord_prev ), 0 );
+				vec4 pathX2_prev   = texelFetch( pathX2_in_prev  , ivec2( fragCoord_prev ), 0 );
+				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( fragCoord_prev ), 0 );
+				vec4 pathX3_prev   = texelFetch( pathX3_in_prev  , ivec2( fragCoord_prev ), 0 );
 
-				bool hasPrevOnly = pathInfo_prev.x > 0.0 && pathInfo.x < 1.0;
-				bool hasCurrOnly = pathInfo_prev.x < 1.0 && pathInfo.x > 0.0;
-				bool hasBoth     = pathInfo_prev.x > 0.0 && pathInfo.x > 0.0;
-				bool hasNone     = pathInfo_prev.x < 1.0 && pathInfo.x < 1.0;
+				bool hasPrev = pathInfo_prev.x > 0.0;
+				bool hasCurr = pathInfo.x > 0.0;
 
-				if ( hasNone || hasCurrOnly ) {
+				if ( !hasPrev ) {
 
 					// Can't do temporal reuse. Go to next pass.
 					return;
@@ -871,57 +856,85 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				// @todo: consider the jacobian
 
-				if ( hasPrevOnly ) {
+				float misWeightCurr = 0.5;
+				float misWeightPrev = 1.0 - misWeightCurr;
 
-					SurfaceRecord surf             = readSurfaceRecord( ivec2( gl_FragCoord.xy ) );
-					float         phat             = targetFunc( surf, pathX0, pathX1, pathX2_prev );
-					float         resamplingWeight = 0.5 * phat * pathInfo_prev.y;
+				if ( hasPrev ) {
 
-					RisSample samp;
+					if ( pathX3_prev.xyz == vec3( 0.0 ) ) {
 
-					samp.pathX2           = pathX2_prev;
-					samp.pathX2_Li        = pathX2_Li_prev.xyz;
-					samp.resamplingWeight = resamplingWeight;
-					// samp.pathX2_wi        = pathX2_wi_prev.xyz;
-
-					addSample( reservoir, samp, phat, rand( ++randBase ) );
-
-				} else if ( hasBoth ) {
-
-					float misWeightCurr = 0.5;
-					float misWeightPrev = 1.0 - misWeightCurr;
-
-					{ // add current frame's sample
-
-						float resamplingWeight = misWeightCurr * pathInfo.z * pathInfo.y;
-
-						RisSample samp;
-
-						samp.pathX2           = pathX2;
-						samp.pathX2_Li        = pathX2_Li.xyz;
-						samp.resamplingWeight = resamplingWeight;
-						samp.pathX2_wi        = pathX2_wi.xyz;
-
-						addSample( reservoir, samp, pathInfo.z, rand( ++randBase ) );
-
-					}
-
-					{ // add previous frame's sample
+						// This is a length 3 path. We'll use the simple target
+						// function w/o visibility checks.
 
 						SurfaceRecord surf             = readSurfaceRecord( ivec2( gl_FragCoord.xy ) );
 						float         phat             = targetFunc( surf, pathX0, pathX1, pathX2_prev );
-						float         resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
+						float         resamplingWeight = 0.5 * phat * pathInfo_prev.y;
 
 						RisSample samp;
 
 						samp.pathX2           = pathX2_prev;
-						samp.pathX2_Li        = pathX2_Li_prev.xyz;
 						samp.resamplingWeight = resamplingWeight;
-						// samp.pathX2_wi        = pathX2_wi_prev.xyz;
+						samp.pathX3           = pathX3_prev;
+
+						addSample( reservoir, samp, phat, rand( ++randBase ) );
+
+					} else {
+
+						// This is a length 4 sample. We'll have to 
+
+						SurfaceHit surfaceHit;
+
+						Ray x1x2ray  = Ray( pathX1.xyz, normalize( pathX2_prev.xyz - pathX1.xyz ) );
+						int _hitType = traceScene( x1x2ray, surfaceHit );
+
+						uint     x2_materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+						Material x2_material      = readMaterialInfo( materials, x2_materialIndex );
+						Material x3_material      = readMaterialInfo( materials, uint( pathX3_prev.w ) );
+
+						SurfaceRecord x2_surf;
+						getSurfaceRecord( x2_material, surfaceHit, attributesArray, 0.0, x2_surf );
+
+						SurfaceRecord x1_surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ) );
+
+						vec3 x2_wi = normalize( pathX3_prev.xyz - pathX2_prev.xyz );
+						vec3 x2_wo = -x1x2ray.direction;
+						vec3 x1_wi = x1x2ray.direction;
+						vec3 x1_wo = normalize( pathX0.xyz - pathX1.xyz);
+
+						vec3  x2_sampleColor;
+						float x2_materialPdf = bsdfResult( x2_wo, x2_wi, x2_surf, x2_sampleColor );
+
+						vec3  x1_sampleColor;
+						float x1_materialPdf = bsdfResult( x1_wo, x1_wi, x1_surf, x1_sampleColor );
+
+						vec3 x2_Lo = x2_surf.emission + x2_sampleColor * ( x3_material.emissive * x3_material.emissiveIntensity );
+						vec3 x1_Lo = x1_sampleColor * x2_Lo;
+
+						float phat             = dot( x1_Lo, luma );
+						float resamplingWeight = 0.5 * phat * pathInfo_prev.y;
+
+						RisSample samp;
+
+						samp.pathX2           = pathX2_prev;
+						samp.resamplingWeight = resamplingWeight;
+						samp.pathX3           = pathX3_prev;
 
 						addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 					}
+				}
+
+				if ( hasCurr ) {
+
+					float resamplingWeight = misWeightCurr * pathInfo.z * pathInfo.y;
+
+					RisSample samp;
+
+					samp.pathX2           = pathX2;
+					samp.resamplingWeight = resamplingWeight;
+					samp.pathX3           = pathX3;
+
+					addSample( reservoir, samp, pathInfo.z, rand( ++randBase ) );
 
 				}
 
@@ -935,10 +948,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX2_out          = reservoir.sampleOut.pathX2;
-				pathInfo_out.y      = reservoir.wSum / reservoir.phatOut;
-				pathX2_Li_out.xyz   = reservoir.sampleOut.pathX2_Li;
-				pathX2_wi_out.xyz   = reservoir.sampleOut.pathX2_wi;
+				pathX2_out     = reservoir.sampleOut.pathX2;
+				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
+				pathX3_out     = reservoir.sampleOut.pathX3;
 
 				#endif
 
@@ -953,8 +965,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				pathX2_out    = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
 				pathInfo_out  = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
-				pathX2_Li_out = texelFetch( pathX2_Li_in, ivec2( gl_FragCoord.xy ), 0 );
-				pathX2_wi_out = texelFetch( pathX2_wi_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX3_out    = texelFetch( pathX3_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				#endif
 
@@ -980,9 +991,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				vec4 pathX0 = cameraWorldMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
 				vec4 pathX2 = texelFetch( pathX2, ivec2( gl_FragCoord.xy ), 0 );
-
-				vec4 pathX2_Li = texelFetch( pathX2_Li, ivec2( gl_FragCoord.xy ), 0 );
-				vec4 pathX2_wi = texelFetch( pathX2_wi, ivec2( gl_FragCoord.xy ), 0 );
+				vec4 pathX3 = texelFetch( pathX3, ivec2( gl_FragCoord.xy ), 0 );
 
 				SurfaceHit surfaceHit = readSurfaceHit( ivec2( gl_FragCoord.xy ) );
 				Ray        primaryRay = getCameraRay2();
@@ -1039,20 +1048,23 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						// Radiance exiting x2 is at least x2's emission.
 						vec3 x2_Lo = x2_emission;
 
-						if ( pathX2_wi != vec4( 0.0 ) ) {
+						if ( pathX3.xyz != vec3( 0.0 ) ) {
+
+							Material x3_material = readMaterialInfo( materials, uint( pathX3.w ) );
+							vec3     x3_emission = x3_material.emissiveIntensity * x3_material.emissive;
 
 							SurfaceRecord x2_surf;
 							getSurfaceRecord( x2_material, pathX2Hit, attributesArray, 0.0, x2_surf );
 
 							vec3 x2_wo = -wi;
-							vec3 x2_wi = pathX2_wi.xyz;
+							vec3 x2_wi = normalize( pathX3.xyz - pathX2.xyz );
 
 							vec3 x2_sampleColor;
 							float x2_materialPdf = bsdfResult( x2_wo, x2_wi, x2_surf, x2_sampleColor );
 
 							if ( x2_materialPdf > 0.0 ) {
 
-								x2_Lo += x2_sampleColor * pathX2_Li.xyz;
+								x2_Lo += x2_sampleColor * x3_emission;
 
 							}
 
@@ -1066,8 +1078,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							// @note: No geometry term (L dot N) needed. I guess
 							// it's included in [sampleColor]? Double checked
 							// that image converges without it.
-
-							// @todo: include pathX2_Li;
 
 							fragColor = vec4( ( surf.emission + sampleColor * x2_Lo ) * unbiasedContribWeight, 1.0 );
 
