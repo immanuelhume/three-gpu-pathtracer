@@ -419,7 +419,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					RisSample samp;
 
 					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
-					samp.pathX2           = vec4( 0.0 ); // path terminates
+					samp.pathX3           = vec4( 0.0 ); // path terminates
 					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, phat, rand( ++randBase ) );
