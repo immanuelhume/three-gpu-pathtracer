@@ -859,7 +859,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 pathX3_prev   = texelFetch( pathX3_in_prev  , ivec2( fragCoord_prev ), 0 );
 
 				bool hasPrev = pathInfo_prev.x > 0.0;
-				bool hasCurr = pathInfo.x > 0.0;
+				bool hasCurr = pathInfo.x      > 0.0;
 
 				if ( !hasPrev ) {
 
@@ -869,8 +869,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 				Reservoir reservoir = initReservoir();
-
-				// @todo: consider the jacobian
 
 				float misWeightCurr = 0.5;
 				float misWeightPrev = 1.0 - misWeightCurr;
@@ -882,8 +880,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						// This is a length 3 path. We'll use the simple target
 						// function w/o visibility checks.
 
-						float         phat             = targetFunc( x1_surf, pathX0, pathX1, pathX2_prev );
-						float         resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
+						float phat             = targetFunc( x1_surf, pathX0, pathX1, pathX2_prev );
+						float resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
 
 						RisSample samp;
 
@@ -963,6 +961,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				pathX2_out     = reservoir.sampleOut.pathX2;
 				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
+				pathInfo_out.z = reservoir.phatOut;
 				pathX3_out     = reservoir.sampleOut.pathX3;
 
 				#endif
