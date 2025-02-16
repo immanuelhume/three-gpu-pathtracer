@@ -91,12 +91,12 @@ export class RestirPathTracer {
             textures: { value: new RenderTarget2DArray().texture },
 
             // light uniforms
-            lights: { value: new LightsInfoUniformStruct() },
-            iesProfiles: { value: new RenderTarget2DArray( 360, 180, {
-                type: HalfFloatType,
-                wrapS: ClampToEdgeWrapping,
-                wrapT: ClampToEdgeWrapping,
-            } ).texture },
+            // lights: { value: null },
+            // iesProfiles: { value: new RenderTarget2DArray( 360, 180, {
+            //     type: HalfFloatType,
+            //     wrapS: ClampToEdgeWrapping,
+            //     wrapT: ClampToEdgeWrapping,
+            // } ).texture },
             environmentIntensity: { value: 1.0 },
             environmentRotation: { value: new Matrix4() },
             envMapInfo: { value: new EquirectHdrInfoUniform() },
@@ -112,8 +112,8 @@ export class RestirPathTracer {
             // randomness uniforms
             seed: { value: 0 },
             sobolTexture: { value: null },
-            // stratifiedTexture: { value: new StratifiedSamplesTexture() },
-            // stratifiedOffsetTexture: { value: new BlueNoiseTexture( 64, 1 ) },
+            // stratifiedTexture: { value: null },
+            // stratifiedOffsetTexture: { value: null },
 
         };
         // this.sharedUniforms.stratifiedTexture.value.init( 20, 24 ); // @todo: what should this be?

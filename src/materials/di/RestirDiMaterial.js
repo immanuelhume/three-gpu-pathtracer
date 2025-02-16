@@ -465,27 +465,28 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#endif
 
-			#if RESTIR_PASS == PASS_SPATIAL_REUSE || RESTIR_PASS == PASS_TEMPORAL_REUSE
+			#if RESTIR_PASS == PASS_TEMPORAL_REUSE
+			// @cont: fix texture units too many error, maybe due to using the materials??
 
-			uniform sampler2D surfaceHit_faceIndices;
-			uniform sampler2D surfaceHit_barycoord_side;
-			uniform sampler2D surfaceHit_faceNormal_dist;
+			// We can't keep the g buffer data around, because it overflows the
+			// max texture units...
+			//
+			// uniform sampler2D surfaceHit_faceIndices;
+			// uniform sampler2D surfaceHit_barycoord_side;
+			// uniform sampler2D surfaceHit_faceNormal_dist;
+
 			uniform sampler2D pathX2_in;
 			uniform sampler2D pathInfo_in;
 			uniform sampler2D pathX3_in;
 
-			layout(location = 0) out vec4 pathX2_out;
-			layout(location = 1) out vec4 pathInfo_out;
-			layout(location = 2) out vec4 pathX3_out;
-
-			#endif
-
-			#if RESTIR_PASS == PASS_TEMPORAL_REUSE
 			// Previous frame data
-
 			uniform sampler2D pathX2_in_prev;
 			uniform sampler2D pathInfo_in_prev;
 			uniform sampler2D pathX3_in_prev;
+
+			layout(location = 0) out vec4 pathX2_out;
+			layout(location = 1) out vec4 pathInfo_out;
+			layout(location = 2) out vec4 pathX3_out;
 
 			#endif
 
@@ -514,7 +515,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#endif
 
-			#if RESTIR_PASS == PASS_SPATIAL_REUSE || RESTIR_PASS == PASS_TEMPORAL_REUSE || RESTIR_PASS == PASS_SHADE_PIXEL
+			#if RESTIR_PASS == PASS_SHADE_PIXEL
 
 			SurfaceHit readSurfaceHit( ivec2 xy ) {
 
@@ -549,6 +550,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			}
 
+			#endif
+
 			float targetFunc( SurfaceRecord surf, vec4 pathX0, vec4 pathX1, vec4 pathX2 ) {
 			
 				vec3 wi = normalize( pathX2.xyz - pathX1.xyz );
@@ -569,8 +572,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				return phat;
 
 			}
-
-			#endif
 
 			void main() {
 
@@ -821,16 +822,31 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 pathInfo = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
 				vec4 pathX3   = texelFetch( pathX3_in  , ivec2( gl_FragCoord.xy ), 0 );
 
-				SurfaceHit surfaceHit = readSurfaceHit( ivec2( gl_FragCoord.xy ) );
-				Ray        primaryRay = getCameraRay2();
-				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
-
 				// "default values"
 				pathX2_out   = pathX2;
 				pathInfo_out = pathInfo;
 				pathX3_out   = pathX3;
 
-				if ( hasPrevFrame == 0 ) return;
+				bool primaryRayMissed = pathInfo.x == -1.0;
+
+				if ( primaryRayMissed || hasPrevFrame == 0 ) return;
+
+				SurfaceHit surfaceHit;
+
+				Ray primaryRay = getCameraRay2();
+				int hitType    = traceScene( primaryRay, surfaceHit );
+
+				SurfaceRecord x1_surf;
+				{
+
+					uint     materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+					Material material      = readMaterialInfo( materials, materialIndex );
+
+					getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, x1_surf );
+
+				}
+
+				vec4 pathX1 = getPathX1( surfaceHit, primaryRay );
 
 				vec4 clip_prev  = cameraProjectionMatrixPrev * invCameraWorldMatrixPrev * vec4( pathX1.xyz, 1.0 );
 				     clip_prev /= clip_prev.w;
@@ -861,14 +877,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hasPrev ) {
 
-					if ( pathX3_prev.xyz == vec3( 0.0 ) ) {
+					if ( pathX3_prev == vec4( 0.0 ) ) { // @todo: use the w component correctly
 
 						// This is a length 3 path. We'll use the simple target
 						// function w/o visibility checks.
 
-						SurfaceRecord surf             = readSurfaceRecord( ivec2( gl_FragCoord.xy ) );
-						float         phat             = targetFunc( surf, pathX0, pathX1, pathX2_prev );
-						float         resamplingWeight = 0.5 * phat * pathInfo_prev.y;
+						float         phat             = targetFunc( x1_surf, pathX0, pathX1, pathX2_prev );
+						float         resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
 
 						RisSample samp;
 
@@ -893,8 +908,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 						SurfaceRecord x2_surf;
 						getSurfaceRecord( x2_material, surfaceHit, attributesArray, 0.0, x2_surf );
-
-						SurfaceRecord x1_surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ) );
 
 						vec3 x2_wi = normalize( pathX3_prev.xyz - pathX2_prev.xyz );
 						vec3 x2_wo = -x1x2ray.direction;
