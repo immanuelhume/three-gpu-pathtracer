@@ -656,9 +656,26 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				int M_bsdf = 1; // override the uniform, @todo: remove the uniform...
 
 				// NEE
-				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, randBase );	
+				// areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, randBase );	
 
 				ScatterRecord scatterRec = bsdfSample( -ray.direction, surf, rand2( ++randBase ) );
+
+				if ( scatterRec.pdf <= 0.0 ) {
+
+					if ( !reservoir.valid ) {
+
+						pathInfo.x = 0.0;
+						return;
+
+					}
+
+					pathX2     = reservoir.sampleOut.pathX2;
+					pathInfo.y = reservoir.wSum / reservoir.phatOut;
+					pathInfo.z = reservoir.phatOut;
+
+					return;
+
+				}
 
 				SurfaceHit cont_surfaceHit;
 
@@ -722,7 +739,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						samp.resamplingWeight = resamplingWeight;
 						samp.pathX3           = vec4( 0.0, 0.0, 0.0, -1.0 ); // path terminates
 
-						addSample( reservoir, samp, phat, rand( ++randBase ) );
+						// addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 					}
 
@@ -737,7 +754,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( ++randBase ) );
 
-					vec3 wo         = -cont_ray.direction;
+					vec3  wo        = -cont_ray.direction;
 					vec3  wi        = normalize( emTri.barycoord - cont_pathX2.xyz );
 					float lightDist = length( emTri.barycoord - cont_pathX2.xyz );
 
@@ -825,6 +842,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathX2_out   = pathX2;
 				pathInfo_out = pathInfo;
 				pathX3_out   = pathX3;
+
+				return;
 
 				bool primaryRayMissed = pathInfo.x == -1.0;
 
@@ -921,7 +940,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						vec3 x1_Lo = x1_sampleColor * x2_Lo;
 
 						float phat             = dot( x1_Lo, luma );
-						float resamplingWeight = 0.5 * phat * pathInfo_prev.y;
+						float resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
 
 						RisSample samp;
 
@@ -1012,10 +1031,12 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				int x1_surfRecord;
 				SurfaceRecord surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ), x1_surfRecord );
+
+				fragColor.xyz += surf.emission;
+
 				if ( x1_surfRecord == SKIP_SURFACE ) {
 
 					// @todo: what's the semantics of skipping a surface even
-					fragColor = vec4( surf.emission, 1.0 );
 					return;
 
 				}
@@ -1024,13 +1045,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec3  wi       = normalize( pathX2.xyz - pathX1.xyz );
 				vec3  wo       = normalize( pathX0.xyz - pathX1.xyz );
 
-				if ( pathInfo.x < 1.0 || dot( wi, surf.normal ) <= 0.0 ) {
+				if ( pathInfo.x < 1.0 ) {
 
-					// Light is behind the surface or no sample selected
-					//
-					// @todo: support transmission...
+					// No sample was selected, for whatever reason.
 
-					fragColor = vec4( surf.emission, 1.0 );
 					return;
 
 				}
@@ -1045,7 +1063,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					if ( pathX2Hit.dist < x1x2dist - 0.001 ) {
 
 						// x2 is blocked
-						fragColor = vec4( surf.emission, 1.0 );
 
 					} else {
 
@@ -1092,7 +1109,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							// it's included in [sampleColor]? Double checked
 							// that image converges without it.
 
-							fragColor = vec4( ( surf.emission + sampleColor * x2_Lo ) * unbiasedContribWeight, 1.0 );
+							fragColor.xyz += sampleColor * x2_Lo * unbiasedContribWeight;
 
 						} else {
 
@@ -1100,17 +1117,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							// the light is beneath the surface, which we have
 							// already checked for.
 
-							fragColor = vec4( surf.emission, 1.0 );
-
 						}
 
 					}
 
 				} else {
 
-					// Shadow ray missed.
-
-					fragColor = vec4( surf.emission, 1.0 );
+					// Ray from x1 to x2 missed. Impossible.
 
 				}
 

@@ -353,7 +353,7 @@ export class RestirPathTracer {
         this.passToneMap.material.uniforms.map.value = this.pongTarget.texture;
         this.passToneMap.render( this.renderer );
 
-        // this.nSamples++;
+        this.nSamples++;
 
         [ this.pongTarget, this.pungTarget ] = [ this.pungTarget, this.pongTarget ];
         [ this.temporalReuseTargetA, this.temporalReuseTargetB ] = [ this.temporalReuseTargetB, this.temporalReuseTargetA ];
