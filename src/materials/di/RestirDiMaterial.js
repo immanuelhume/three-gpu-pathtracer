@@ -419,7 +419,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					RisSample samp;
 
 					samp.pathX2           = vec4( emTri.barycoord, float( emTriMaterialIndex ) );
-					samp.pathX3           = vec4( 0.0 ); // path terminates
+					samp.pathX3           = vec4( 0.0, 0.0, 0.0, -1.0 ); // path terminates
 					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, phat, rand( ++randBase ) );
@@ -607,7 +607,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				pathX2   = vec4( 0.0 );
 				pathInfo = vec4( 0.0 );
-				pathX3   = vec4( 0.0 );
+				pathX3   = vec4( 0.0, 0.0, 0.0, -1.0 );
 
 				pathInfo.x = 1.0;
 
@@ -677,9 +677,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					}
 
-					pathX2      = reservoir.sampleOut.pathX2;
-					pathInfo.y  = reservoir.wSum / reservoir.phatOut;
-					pathInfo.z  = reservoir.phatOut;
+					pathX2     = reservoir.sampleOut.pathX2;
+					pathInfo.y = reservoir.wSum / reservoir.phatOut;
+					pathInfo.z = reservoir.phatOut;
 
 					return;
 
@@ -720,7 +720,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 						samp.pathX2           = cont_pathX2;
 						samp.resamplingWeight = resamplingWeight;
-						samp.pathX3           = vec4( 0.0 ); // path terminates
+						samp.pathX3           = vec4( 0.0, 0.0, 0.0, -1.0 ); // path terminates
 
 						addSample( reservoir, samp, phat, rand( ++randBase ) );
 
@@ -733,8 +733,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					// then trace a shadow ray to account for visiblitiy. This
 					// allows us to avoid tracing this ray for later stages.
 					//
-					// It's essentially getting the incoming radiance at X2,
-					// without storing the full radiance.
+					// It's essentially getting the incoming radiance at X2.
 
 					EmissiveTriangleSample emTri = randomEmissiveTriangleSample( emissiveTriangles, rand( ++randBase ) );
 
@@ -781,7 +780,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							samp.resamplingWeight = resamplingWeight;
 							samp.pathX3           = vec4( emTri.barycoord, emTriMaterialIndex );
 
-							// addSample( reservoir, samp, phat, rand( ++randBase ) );
+							addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 						}
 					
@@ -796,10 +795,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				pathX2        = reservoir.sampleOut.pathX2;
-				pathInfo.y    = reservoir.wSum / reservoir.phatOut;
-				pathInfo.z    = reservoir.phatOut;
-				pathX3        = reservoir.sampleOut.pathX3;
+				pathX2     = reservoir.sampleOut.pathX2;
+				pathInfo.y = reservoir.wSum / reservoir.phatOut;
+				pathInfo.z = reservoir.phatOut;
+				pathX3     = reservoir.sampleOut.pathX3;
 
 				// @todo: insert visibility pass?
 
@@ -875,7 +874,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hasPrev ) {
 
-					if ( pathX3_prev == vec4( 0.0 ) ) { // @todo: use the w component correctly
+					if ( pathX3_prev.w == -1.0 ) { // @todo: use the w component correctly
 
 						// This is a length 3 path. We'll use the simple target
 						// function w/o visibility checks.
@@ -975,9 +974,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// this sample, so that we can reuse for the next frame.
 				////////////////////////////////////////////////////////////////
 
-				pathX2_out    = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
-				pathInfo_out  = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
-				pathX3_out    = texelFetch( pathX3_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX2_out   = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathInfo_out = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX3_out   = texelFetch( pathX3_in, ivec2( gl_FragCoord.xy ), 0 );
 
 				#endif
 
@@ -1060,7 +1059,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						// Radiance exiting x2 is at least x2's emission.
 						vec3 x2_Lo = x2_emission;
 
-						if ( pathX3.xyz != vec3( 0.0 ) ) {
+						if ( pathX3.w != -1.0 ) {
+
+							// Path has length 4. The light source is x4.
 
 							Material x3_material = readMaterialInfo( materials, uint( pathX3.w ) );
 							vec3     x3_emission = x3_material.emissiveIntensity * x3_material.emissive;
