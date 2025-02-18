@@ -656,7 +656,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				int M_bsdf = 1; // override the uniform, @todo: remove the uniform...
 
 				// NEE
-				// areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, randBase );	
+				areaSampleLight( reservoir, M_area, M_bsdf, pathX1, -ray.direction, surf, randBase );	
 
 				ScatterRecord scatterRec = bsdfSample( -ray.direction, surf, rand2( ++randBase ) );
 
@@ -739,7 +739,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						samp.resamplingWeight = resamplingWeight;
 						samp.pathX3           = vec4( 0.0, 0.0, 0.0, -1.0 ); // path terminates
 
-						// addSample( reservoir, samp, phat, rand( ++randBase ) );
+						addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 					}
 
@@ -768,7 +768,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						Ray shadowRay = Ray( cont_pathX2.xyz, wi );
 						int hitType   = traceScene( shadowRay, surfaceHit );
 
-						if ( hitType == SURFACE_HIT && surfaceHit.dist >= lightDist - 0.01 ) {
+						if ( hitType == SURFACE_HIT && surfaceHit.dist >= lightDist - 0.001 ) {
 
 							// Light is not occluded. We have a length 4 path!
 
@@ -797,7 +797,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							samp.resamplingWeight = resamplingWeight;
 							samp.pathX3           = vec4( emTri.barycoord, emTriMaterialIndex );
 
-							addSample( reservoir, samp, phat, rand( ++randBase ) );
+							// addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 						}
 					
@@ -843,8 +843,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathInfo_out = pathInfo;
 				pathX3_out   = pathX3;
 
-				return;
-
 				bool primaryRayMissed = pathInfo.x == -1.0;
 
 				if ( primaryRayMissed || hasPrevFrame == 0 ) return;
@@ -853,16 +851,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				Ray primaryRay = getCameraRay2();
 				int hitType    = traceScene( primaryRay, surfaceHit );
-
-				SurfaceRecord x1_surf;
-				{
-
-					uint     materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-					Material material      = readMaterialInfo( materials, materialIndex );
-
-					getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, x1_surf );
-
-				}
 
 				vec4 pathX1 = getPathX1( surfaceHit, primaryRay );
 
@@ -893,64 +881,17 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hasPrev ) {
 
-					if ( pathX3_prev.w == -1.0 ) { // @todo: use the w component correctly
+					float misWeight = hasCurr ? misWeightPrev : 1.0;
+					float resamplingWeight = misWeight * pathInfo_prev.z * pathInfo_prev.y;
 
-						// This is a length 3 path. We'll use the simple target
-						// function w/o visibility checks.
+					RisSample samp;
 
-						float phat             = targetFunc( x1_surf, pathX0, pathX1, pathX2_prev );
-						float resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
+					samp.pathX2           = pathX2_prev;
+					samp.resamplingWeight = resamplingWeight;
+					samp.pathX3           = pathX3_prev;
 
-						RisSample samp;
+					addSample( reservoir, samp, pathInfo_prev.z, rand( ++randBase ) );
 
-						samp.pathX2           = pathX2_prev;
-						samp.resamplingWeight = resamplingWeight;
-						samp.pathX3           = pathX3_prev;
-
-						addSample( reservoir, samp, phat, rand( ++randBase ) );
-
-					} else {
-
-						// This is a length 4 sample. We'll have to 
-
-						SurfaceHit surfaceHit;
-
-						Ray x1x2ray  = Ray( pathX1.xyz, normalize( pathX2_prev.xyz - pathX1.xyz ) );
-						int _hitType = traceScene( x1x2ray, surfaceHit );
-
-						uint     x2_materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
-						Material x2_material      = readMaterialInfo( materials, x2_materialIndex );
-						Material x3_material      = readMaterialInfo( materials, uint( pathX3_prev.w ) );
-
-						SurfaceRecord x2_surf;
-						getSurfaceRecord( x2_material, surfaceHit, attributesArray, 0.0, x2_surf );
-
-						vec3 x2_wi = normalize( pathX3_prev.xyz - pathX2_prev.xyz );
-						vec3 x2_wo = -x1x2ray.direction;
-						vec3 x1_wi = x1x2ray.direction;
-						vec3 x1_wo = normalize( pathX0.xyz - pathX1.xyz);
-
-						vec3  x2_sampleColor;
-						float x2_materialPdf = bsdfResult( x2_wo, x2_wi, x2_surf, x2_sampleColor );
-
-						vec3  x1_sampleColor;
-						float x1_materialPdf = bsdfResult( x1_wo, x1_wi, x1_surf, x1_sampleColor );
-
-						vec3 x2_Lo = x2_surf.emission + x2_sampleColor * ( x3_material.emissive * x3_material.emissiveIntensity );
-						vec3 x1_Lo = x1_sampleColor * x2_Lo;
-
-						float phat             = dot( x1_Lo, luma );
-						float resamplingWeight = misWeightPrev * phat * pathInfo_prev.y;
-
-						RisSample samp;
-
-						samp.pathX2           = pathX2_prev;
-						samp.resamplingWeight = resamplingWeight;
-						samp.pathX3           = pathX3_prev;
-
-						addSample( reservoir, samp, phat, rand( ++randBase ) );
-
-					}
 				}
 
 				if ( hasCurr ) {
@@ -970,8 +911,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				if ( !reservoir.valid ) {
 
 					// If sampling failed somehow, then we'll just use the
-					// original sample for this frame before spatial reuse
-					// happens. I.e. it's as if we skipped spatial reuse for
+					// original sample for this frame before temporarl reuse
+					// happens. I.e. it's as if we skipped temporarl reuse for
 					// this pixel.
 					return;
 
@@ -1126,6 +1067,10 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					// Ray from x1 to x2 missed. Impossible.
 
 				}
+
+				fragColor.xyz = min( fragColor.xyz, vec3( 10.0 ) );
+				// fragColor.xyz = fragColor.xyz / ( 1.0 + fragColor.xyz );
+				// fragColor.xyz = log( 1.0 + fragColor.xyz );
 
 				#endif
 

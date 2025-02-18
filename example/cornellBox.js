@@ -61,7 +61,7 @@ async function init() {
 	// pathTracer.setBVHWorker( new ParallelMeshBVHWorker() );
     // pathTracer.dynamicLowRes = true;
     // pathTracer.lowResScale = 1.0;
-    // pathTracer.bounces = 2;
+    // pathTracer.bounces = 3;
 
     pathTracer = new RestirPathTracer( renderer );
     pathTracer.setBVHWorker( new ParallelMeshBVHWorker() );
