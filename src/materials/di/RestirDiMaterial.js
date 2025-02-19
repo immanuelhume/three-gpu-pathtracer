@@ -768,7 +768,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						Ray shadowRay = Ray( cont_pathX2.xyz, wi );
 						int hitType   = traceScene( shadowRay, surfaceHit );
 
-						if ( hitType == SURFACE_HIT && surfaceHit.dist >= lightDist - 0.001 ) {
+						if ( hitType == SURFACE_HIT && surfaceHit.dist >= lightDist - 1e-5 ) {
 
 							// Light is not occluded. We have a length 4 path!
 
@@ -785,11 +785,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							vec3 cont_sampleColor;
 
 							float materialPdf = bsdfResult( wo, wi, cont_surf, cont_sampleColor );
-							vec3  Lo          = cont_emission + cont_sampleColor * emission;
+							vec3  Lo          = cont_sampleColor * emission;
 
 							float phat             = dot( scatterRec.color * Lo, luma );
 							float misWeight        = 1.0;
-							float resamplingWeight = misWeight * phat * invLightPdf / scatterRec.pdf;
+							float resamplingWeight = misWeight * phat * invLightPdf / ( scatterRec.pdf + 1e-5 );
 
 							RisSample samp;
 
@@ -797,7 +797,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							samp.resamplingWeight = resamplingWeight;
 							samp.pathX3           = vec4( emTri.barycoord, emTriMaterialIndex );
 
-							// addSample( reservoir, samp, phat, rand( ++randBase ) );
+							addSample( reservoir, samp, phat, rand( ++randBase ) );
 
 						}
 					
@@ -813,7 +813,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 				pathX2     = reservoir.sampleOut.pathX2;
-				pathInfo.y = reservoir.wSum / reservoir.phatOut;
+				pathInfo.y = reservoir.wSum / ( reservoir.phatOut + 1e-5 );
 				pathInfo.z = reservoir.phatOut;
 				pathX3     = reservoir.sampleOut.pathX3;
 
@@ -843,7 +843,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathInfo_out = pathInfo;
 				pathX3_out   = pathX3;
 
-				bool primaryRayMissed = pathInfo.x == -1.0;
+				bool primaryRayMissed = pathInfo.x < 0.0;
 
 				if ( primaryRayMissed || hasPrevFrame == 0 ) return;
 
@@ -857,32 +857,39 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 clip_prev  = cameraProjectionMatrixPrev * invCameraWorldMatrixPrev * vec4( pathX1.xyz, 1.0 );
 				     clip_prev /= clip_prev.w;
 
-				vec2 uv_prev        = 0.5 * clip_prev.xy + 0.5;
-				vec2 fragCoord_prev = uv_prev * resolution;
+				vec2 uv_prev = 0.5 * clip_prev.xy + 0.5;
 
-				vec4 pathX2_prev   = texelFetch( pathX2_in_prev  , ivec2( fragCoord_prev ), 0 );
-				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, ivec2( fragCoord_prev ), 0 );
-				vec4 pathX3_prev   = texelFetch( pathX3_in_prev  , ivec2( fragCoord_prev ), 0 );
+				if ( uv_prev.x < 0.0 || uv_prev.y < 0.0 || uv_prev.x > 1.0 || uv_prev.y > 1.0 ) return;
+
+				ivec2 fragCoord_prev = ivec2( uv_prev * resolution );
+
+				vec4 pathX2_prev   = texelFetch( pathX2_in_prev  , fragCoord_prev, 0 );
+				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, fragCoord_prev, 0 );
+				vec4 pathX3_prev   = texelFetch( pathX3_in_prev  , fragCoord_prev, 0 );
 
 				bool hasPrev = pathInfo_prev.x > 0.0;
 				bool hasCurr = pathInfo.x      > 0.0;
 
-				if ( !hasPrev ) {
+				if ( !hasPrev ) return; // Can't do temporal reuse. Go to next pass.
 
-					// Can't do temporal reuse. Go to next pass.
-					return;
+				// Check if the previous sample is legit.
+				bool depthOk =
+					pathInfo_prev.w > 0.9 * pathInfo.w &&
+					pathInfo_prev.w < 1.1 * pathInfo.w;
 
-				}
+				if ( !depthOk ) return;
 
 				Reservoir reservoir = initReservoir();
 
-				float misWeightCurr = 0.5;
-				float misWeightPrev = 1.0 - misWeightCurr;
+				// float misWeightCurr = 0.5;
+				// float misWeightPrev = 1.0 - misWeightCurr;
+
+				float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
+				float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
 
 				if ( hasPrev ) {
 
-					float misWeight = hasCurr ? misWeightPrev : 1.0;
-					float resamplingWeight = misWeight * pathInfo_prev.z * pathInfo_prev.y;
+					float resamplingWeight = misWeightPrev * pathInfo_prev.z * pathInfo_prev.y;
 
 					RisSample samp;
 
@@ -919,7 +926,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 				pathX2_out     = reservoir.sampleOut.pathX2;
-				pathInfo_out.y = reservoir.wSum / reservoir.phatOut;
+				pathInfo_out.y = reservoir.wSum / ( reservoir.phatOut + 1e-5 );
 				pathInfo_out.z = reservoir.phatOut;
 				pathX3_out     = reservoir.sampleOut.pathX3;
 
@@ -968,16 +975,19 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				Ray        primaryRay = getCameraRay2();
 				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
-				float unbiasedContribWeight = pathInfo.y;
+				// @todo: this is negative somehow??
+				// float unbiasedContribWeight = pathInfo.y;
+				// float unbiasedContribWeight = 1.0;
+				float unbiasedContribWeight = max( 0.0, pathInfo.y );
 
 				int x1_surfRecord;
 				SurfaceRecord surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ), x1_surfRecord );
 
 				fragColor.xyz += surf.emission;
 
-				if ( x1_surfRecord == SKIP_SURFACE ) {
+				if ( pathInfo.x < 1.0 ) {
 
-					// @todo: what's the semantics of skipping a surface even
+					// Primary ray hit but no sample was selected.
 					return;
 
 				}
@@ -986,14 +996,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec3  wi       = normalize( pathX2.xyz - pathX1.xyz );
 				vec3  wo       = normalize( pathX0.xyz - pathX1.xyz );
 
-				if ( pathInfo.x < 1.0 ) {
-
-					// No sample was selected, for whatever reason.
-
-					return;
-
-				}
-
 				SurfaceHit pathX2Hit;
 
 				Ray x1x2ray = Ray( pathX1.xyz, wi );
@@ -1001,7 +1003,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				if ( hitType == SURFACE_HIT ) {
 
-					if ( pathX2Hit.dist < x1x2dist - 0.001 ) {
+					if ( pathX2Hit.dist < x1x2dist - 1e-5 ) {
 
 						// x2 is blocked
 
@@ -1068,7 +1070,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				fragColor.xyz = min( fragColor.xyz, vec3( 10.0 ) );
+				// fragColor.xyz = min( fragColor.xyz, vec3( 10.0 ) );
 				// fragColor.xyz = fragColor.xyz / ( 1.0 + fragColor.xyz );
 				// fragColor.xyz = log( 1.0 + fragColor.xyz );
 

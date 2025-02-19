@@ -212,7 +212,7 @@ export class RestirPathTracer {
 
             ...this.passGenSample.material.uniforms,
             ...this.sharedUniforms,
-            M_area: { value: 4 },
+            M_area: { value: 8 },
             M_bsdf: { value: 1 }, // @todo: remove this
 
         };
@@ -353,7 +353,7 @@ export class RestirPathTracer {
         this.passToneMap.material.uniforms.map.value = this.pongTarget.texture;
         this.passToneMap.render( this.renderer );
 
-        this.nSamples++;
+        // this.nSamples++;
 
         [ this.pongTarget, this.pungTarget ] = [ this.pungTarget, this.pongTarget ];
         [ this.temporalReuseTargetA, this.temporalReuseTargetB ] = [ this.temporalReuseTargetB, this.temporalReuseTargetA ];
@@ -361,9 +361,6 @@ export class RestirPathTracer {
         this.sharedUniforms.invCameraWorldMatrixPrev.value.copy( this.camera.matrixWorldInverse );
         this.sharedUniforms.cameraProjectionMatrixPrev.value.copy( this.camera.projectionMatrix );
         this.sharedUniforms.hasPrevFrame.value = 1;
-
-        // console.log( "view matrix:", this.sharedUniforms.invCameraWorldMatrixPrev.value );
-        // console.log( "proj matrix:", this.sharedUniforms.cameraProjectionMatrixPrev.value );
 
     }
 

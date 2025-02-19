@@ -68,9 +68,8 @@ async function init() {
 
 	// camera
 	camera = new PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.025, 500 );
-	// camera.position.set( 0, 2, 16 );
-	camera.position.set( -3, 2, 8 );
-    camera.lookAt( 2, 2, 0 );
+	camera.position.set( 2.7, 2.7, 16 );
+	camera.lookAt( 2.7, 2.7, 15 );
 
 	// controls = new FlyControls( camera, renderer.domElement );
 	controls = new PointerLockControls( camera, renderer.domElement );
@@ -109,66 +108,72 @@ async function init() {
 	scene = new Scene();
 	// scene.backgroundBlurriness = 0.05;
 
-    const plane = new PlaneGeometry(4, 4);
+    const plane = new PlaneGeometry(5.55, 5.55);
 
-    const ceilingMaterial = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide });
-    const floorMaterial = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, clearcoat: 1.0, roughness: 0.5, metalness: 0.5 });
-    const leftMaterial = new THREE.MeshPhysicalMaterial({ color: 0xff0000, side: THREE.DoubleSide });
-    const rightMaterial = new THREE.MeshPhysicalMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
-    const backMaterial = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, clearcoat: 1.0, roughness: 0.5, metalness: 0.5 });
+    const ceilingMaterial = new THREE.MeshPhysicalMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    const floorMaterial = new THREE.MeshPhysicalMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    const leftMaterial = new THREE.MeshPhysicalMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+    const rightMaterial = new THREE.MeshPhysicalMaterial({ color: 0xff0000, side: THREE.DoubleSide });
+    const backMaterial = new THREE.MeshPhysicalMaterial({ color: 0xffffff, side: THREE.DoubleSide });
 
     const floor = new THREE.Mesh(plane, floorMaterial);
-    floor.position.z = 2;
+    floor.position.x = 5.55 / 2;
+    floor.position.y = 0;
+    floor.position.z = 5.55 / 2;
     floor.rotateX(-Math.PI/2);
 
     const back = new THREE.Mesh(plane, backMaterial);
-    back.position.y = 2;
+    back.position.x = 5.55 / 2;
+    back.position.y = 5.55 / 2;
+    back.position.z = 0;
 
     const left = new THREE.Mesh(plane, leftMaterial);
-    left.position.x = -2;
-    left.position.y = 2;
-    left.position.z = 2;
+    left.position.x = 0;
+    left.position.y = 5.55 / 2;
+    left.position.z = 5.55 / 2;
     left.rotateY(Math.PI/2);
 
     const right = new THREE.Mesh(plane, rightMaterial);
-    right.position.x = 2;
-    right.position.y = 2;
-    right.position.z = 2;
+    right.position.x = 5.55;
+    right.position.y = 5.55 / 2;
+    right.position.z = 5.55 / 2;
     right.rotateY(-Math.PI/2);
 
     const ceiling = new THREE.Mesh(plane, ceilingMaterial);
-    ceiling.position.y = 4;
-    ceiling.position.z = 2;
+    ceiling.position.x = 5.55 / 2;
+    ceiling.position.y = 5.55;
+    ceiling.position.z = 5.55 / 2;
     ceiling.rotateX(Math.PI/2);
 
-    const areaLight = new THREE.RectAreaLight(0xffffff, 5, 1, 1);
-    areaLight.position.y = 3.999;
-    areaLight.position.z = 2;
+    const areaLight = new THREE.RectAreaLight(0xffffff, 10, 1, 1);
+    areaLight.position.x = 5.55 / 2;
+    areaLight.position.y = 5.55 - 1e-5;
+    areaLight.position.z = 5.55 / 2;
     areaLight.rotateX(-Math.PI/2);
 
     const lightGeom = new THREE.PlaneGeometry(1, 1);
-    const lightEmissiveMat = new THREE.MeshPhysicalMaterial({ emissive: 0xffffff, emissiveIntensity: 2.0 });
+    const lightEmissiveMat = new THREE.MeshPhysicalMaterial({ emissive: 0xffffff, emissiveIntensity: 10.0 });
     const lightEmissiveTile = new THREE.Mesh(lightGeom, lightEmissiveMat);
-    lightEmissiveTile.position.y = 3.999;
-    lightEmissiveTile.position.z = 2;
+    lightEmissiveTile.position.x = 5.55 / 2;
+    lightEmissiveTile.position.y = 5.55 - 1e-5;
+    lightEmissiveTile.position.z = 5.55 / 2;
     lightEmissiveTile.rotateX(Math.PI/2);
 
-    const box1Geom = new THREE.BoxGeometry(1.2, 2.5);
+    const box1Geom = new THREE.BoxGeometry(1.65, 3.3, 1.65);
     const box1Mat = new THREE.MeshPhysicalMaterial();
     box1 = new THREE.Mesh(box1Geom, box1Mat);
-    box1.position.z = 1.3;
-    box1.position.y = 1.25;
-    box1.position.x = -0.7;
-    box1.rotateY(Math.PI/9);
+    box1.translateX(1.25 + 1.65/2);
+    box1.translateY(0 + 3.3/2);
+    box1.translateZ(0.95 + 1.65/2);
+    box1.rotateY(0.3925);
 
-    const box2Geom = new THREE.BoxGeometry( 1.0, 1.0, 1.0 );
-    // const box2Geom = new THREE.SphereGeometry(0.6);
-    // const box2Geom = new THREE.CylinderGeometry(0.6, 0.6, 1.2);
-    const box2Mat = new THREE.MeshPhysicalMaterial({ emissive: 0x88ffff, emissiveIntensity: 1.0 });
+    const box2Geom = new THREE.BoxGeometry(1.65, 1.65, 1.65);
+    const box2Mat = new THREE.MeshPhysicalMaterial();
     box2 = new THREE.Mesh(box2Geom, box2Mat);
-    box2.position.z = 2.5;
-    box2.position.y = 1.6;
-    box2.position.x = 0.7;
+    box2.translateX(2.6 + 1.65/2);
+    box2.translateY(0 + 1.65/2);
+    box2.translateZ(3.25 + 1.65/2);
+    box2.rotateY(-0.314);
 
     // box2.position.z = 2.0;
     // box2.position.y = 0.7;
@@ -183,9 +188,9 @@ async function init() {
     scene.add(back);
 
     // scene.add(areaLight);
-    // scene.add(lightEmissiveTile);
+    scene.add(lightEmissiveTile);
 
-    // scene.add(box1);
+    scene.add(box1);
     scene.add(box2);
 
     pathTracer.setScene( scene, camera );
