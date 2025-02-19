@@ -393,8 +393,8 @@ export class RestirPathTracer {
 
 		}
 
-		this.passShadePixel.material.setDefine( 'CAMERA_TYPE', cameraType );
-        this.passGenSample.material.setDefine( 'CAMERA_TYPE', cameraType );
+		// this.passShadePixel.material.setDefine( 'CAMERA_TYPE', cameraType );
+        // this.passGenSample.material.setDefine( 'CAMERA_TYPE', cameraType );
 
         // this.reset();
 

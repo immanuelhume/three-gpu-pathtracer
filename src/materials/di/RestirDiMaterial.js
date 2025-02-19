@@ -326,6 +326,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			Reservoir initReservoir() {
 
 				Reservoir reservoir;
+				reservoir.phatOut = 0.0;
 				reservoir.wSum = 0.0;
 				reservoir.valid = false;
 				return reservoir;
@@ -635,14 +636,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					int surfRecord = getSurfaceRecord( material, surfaceHit, attributesArray, 0.0, surf );
 
-					if ( surfRecord == SKIP_SURFACE ) {
-
-						// TODO: what's the semantics of skipping a surface even
-						pathInfo.x = 0.0;
-						return;
-
-					}
-
 				}
 
 				// Record G buffer
@@ -881,11 +874,11 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				Reservoir reservoir = initReservoir();
 
-				// float misWeightCurr = 0.5;
-				// float misWeightPrev = 1.0 - misWeightCurr;
+				float misWeightCurr = 0.5;
+				float misWeightPrev = 1.0 - misWeightCurr;
 
-				float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
-				float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
+				// float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
+				// float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
 
 				if ( hasPrev ) {
 

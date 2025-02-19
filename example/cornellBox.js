@@ -112,8 +112,8 @@ async function init() {
 
     const ceilingMaterial = new THREE.MeshPhysicalMaterial({ color: 0xffffff, side: THREE.DoubleSide });
     const floorMaterial = new THREE.MeshPhysicalMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-    const leftMaterial = new THREE.MeshPhysicalMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
-    const rightMaterial = new THREE.MeshPhysicalMaterial({ color: 0xff0000, side: THREE.DoubleSide });
+    const rightMaterial = new THREE.MeshPhysicalMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+    const leftMaterial = new THREE.MeshPhysicalMaterial({ color: 0xff0000, side: THREE.DoubleSide });
     const backMaterial = new THREE.MeshPhysicalMaterial({ color: 0xffffff, side: THREE.DoubleSide });
 
     const floor = new THREE.Mesh(plane, floorMaterial);
