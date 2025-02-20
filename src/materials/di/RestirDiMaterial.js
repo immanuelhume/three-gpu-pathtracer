@@ -736,9 +736,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 					}
 
-				}
-				
-				{
+				} else {
+
 					// Let's sample one area light from [cont_pathX2] (NEE) and
 					// then trace a shadow ray to account for visiblitiy. This
 					// allows us to avoid tracing this ray for later stages.
@@ -778,19 +777,24 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 							vec3 cont_sampleColor;
 
 							float materialPdf = bsdfResult( wo, wi, cont_surf, cont_sampleColor );
-							vec3  Lo          = cont_sampleColor * emission;
 
-							float phat             = dot( scatterRec.color * Lo, luma );
-							float misWeight        = 1.0;
-							float resamplingWeight = misWeight * phat * invLightPdf / ( scatterRec.pdf + 1e-5 );
+							if ( materialPdf >= 0.0 ) {
 
-							RisSample samp;
+								vec3  Lo = cont_emission + cont_sampleColor * emission;
 
-							samp.pathX2           = vec4( cont_pathX2 );
-							samp.resamplingWeight = resamplingWeight;
-							samp.pathX3           = vec4( emTri.barycoord, emTriMaterialIndex );
+								float phat             = dot( scatterRec.color * Lo, luma );
+								float misWeight        = 1.0;
+								float resamplingWeight = misWeight * phat * invLightPdf / ( scatterRec.pdf + 1e-5 );
 
-							addSample( reservoir, samp, phat, rand( ++randBase ) );
+								RisSample samp;
+
+								samp.pathX2           = vec4( cont_pathX2 );
+								samp.resamplingWeight = resamplingWeight;
+								samp.pathX3           = vec4( emTri.barycoord, emTriMaterialIndex );
+
+								addSample( reservoir, samp, phat, rand( ++randBase ) );
+
+							}
 
 						}
 					
@@ -806,6 +810,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 				pathX2     = reservoir.sampleOut.pathX2;
+				pathInfo.x = 1.0;
 				pathInfo.y = reservoir.wSum / ( reservoir.phatOut + 1e-5 );
 				pathInfo.z = reservoir.phatOut;
 				pathX3     = reservoir.sampleOut.pathX3;
@@ -860,17 +865,26 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				vec4 pathInfo_prev = texelFetch( pathInfo_in_prev, fragCoord_prev, 0 );
 				vec4 pathX3_prev   = texelFetch( pathX3_in_prev  , fragCoord_prev, 0 );
 
-				bool hasPrev = pathInfo_prev.x > 0.0;
+				// Check if the previous sample is legit.
+				bool depthOk =
+					pathInfo_prev.w > 0.95 * pathInfo.w &&
+					pathInfo_prev.w < 1.05 * pathInfo.w;
+
+				bool hasPrev = pathInfo_prev.x > 0.0 && depthOk && pathX3.w < 0.0;
 				bool hasCurr = pathInfo.x      > 0.0;
 
 				if ( !hasPrev ) return; // Can't do temporal reuse. Go to next pass.
 
-				// Check if the previous sample is legit.
-				bool depthOk =
-					pathInfo_prev.w > 0.9 * pathInfo.w &&
-					pathInfo_prev.w < 1.1 * pathInfo.w;
+				if ( !hasCurr ) {
 
-				if ( !depthOk ) return;
+					// pathX2_out   = pathX2_prev;
+					// pathInfo_out = pathInfo_prev;
+					// pathX3_out   = pathX3_prev;
+
+					return;
+
+				}
+
 
 				Reservoir reservoir = initReservoir();
 
@@ -881,7 +895,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
 				float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
 
-				if ( hasPrev ) {
+				{
+
+					// @todo: we need to re-calculate the phat for previous frame's sample!
 
 					float resamplingWeight = misWeightPrev * pathInfo_prev.z * pathInfo_prev.y;
 
@@ -895,7 +911,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-				if ( hasCurr ) {
+				{
 
 					float resamplingWeight = misWeightCurr * pathInfo.z * pathInfo.y;
 
@@ -915,11 +931,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					// original sample for this frame before temporarl reuse
 					// happens. I.e. it's as if we skipped temporarl reuse for
 					// this pixel.
+					pathInfo_out.x = 0.0;
 					return;
 
 				}
 
 				pathX2_out     = reservoir.sampleOut.pathX2;
+				pathInfo_out.x = 1.0;
 				pathInfo_out.y = reservoir.wSum / ( reservoir.phatOut + 1e-5 );
 				pathInfo_out.z = reservoir.phatOut;
 				pathX3_out     = reservoir.sampleOut.pathX3;
@@ -935,9 +953,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// this sample, so that we can reuse for the next frame.
 				////////////////////////////////////////////////////////////////
 
-				pathX2_out   = texelFetch( pathX2_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX2_out   = texelFetch( pathX2_in  , ivec2( gl_FragCoord.xy ), 0 );
 				pathInfo_out = texelFetch( pathInfo_in, ivec2( gl_FragCoord.xy ), 0 );
-				pathX3_out   = texelFetch( pathX3_in, ivec2( gl_FragCoord.xy ), 0 );
+				pathX3_out   = texelFetch( pathX3_in  , ivec2( gl_FragCoord.xy ), 0 );
 
 				#endif
 
@@ -969,9 +987,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				Ray        primaryRay = getCameraRay2();
 				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
-				// @todo: this is negative somehow??
-				// float unbiasedContribWeight = pathInfo.y;
-				float unbiasedContribWeight = max( 0.0, pathInfo.y );
+				float unbiasedContribWeight = pathInfo.y;
 
 				int x1_surfRecord;
 				SurfaceRecord surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ), x1_surfRecord );
@@ -1012,7 +1028,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						// Radiance exiting x2 is at least x2's emission.
 						vec3 x2_Lo = x2_emission;
 
-						if ( pathX3.w != -1.0 ) {
+						if ( pathX3.w >= 0.0 ) {
 
 							// Path has length 4. The light source is x4.
 

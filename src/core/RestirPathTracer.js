@@ -345,13 +345,13 @@ export class RestirPathTracer {
         this.passShadePixel.material.uniforms.pathInfo = { value: this.temporalReuseTargetA.textures[ 1 ] };
         this.passShadePixel.material.uniforms.pathX3 = { value: this.temporalReuseTargetA.textures[ 2 ] };
         this.passShadePixel.material.onBeforeRender();
-        this.renderer.setRenderTarget( this.pingTarget );
+        this.renderer.setRenderTarget( this.pongTarget );
         this.passShadePixel.render( this.renderer );
 
         // denoise image
-        this.passDenoise.material.uniforms.img = { value: this.pingTarget.texture };
-        this.renderer.setRenderTarget( this.pongTarget );
-        this.passDenoise.render( this.renderer );
+        // this.passDenoise.material.uniforms.img = { value: this.pingTarget.texture };
+        // this.renderer.setRenderTarget( this.pongTarget );
+        // this.passDenoise.render( this.renderer );
 
         // average samples, @todo: remove this stage, or make it optional
         this.passAverageSamples.material.uniforms.nSamples.value = this.nSamples;
