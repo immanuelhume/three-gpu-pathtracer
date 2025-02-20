@@ -874,11 +874,12 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				Reservoir reservoir = initReservoir();
 
-				float misWeightCurr = 0.5;
-				float misWeightPrev = 1.0 - misWeightCurr;
+				// @todo: why do these weights work?
+				// float misWeightCurr = 0.5;
+				// float misWeightPrev = 1.0 - misWeightCurr;
 
-				// float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
-				// float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
+				float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
+				float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
 
 				if ( hasPrev ) {
 
@@ -970,7 +971,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				// @todo: this is negative somehow??
 				// float unbiasedContribWeight = pathInfo.y;
-				// float unbiasedContribWeight = 1.0;
 				float unbiasedContribWeight = max( 0.0, pathInfo.y );
 
 				int x1_surfRecord;
@@ -1086,5 +1086,89 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 		this.defines["RESTIR_PASS"] = pass;
 
     }
+
+}
+
+export class DenoiseMaterial extends ShaderMaterial {
+
+	constructor() {
+
+		super( {
+
+			uniforms: {
+
+				img: { value: null },
+				sigma: { value: 0 },
+				kSigma: { value: 0 },
+				threshold: { value: 0 },
+
+			},
+			
+			vertexShader: /* glsl */`
+
+				varying vec2 vUv;
+				void main() {
+
+					vUv = uv;
+					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+				}
+
+			`,
+
+			fragmentShader: /* glsl */`
+
+				#define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
+				#define INV_PI 0.31830988618379067153776752674503
+
+				uniform sampler2D img;
+
+				uniform float sigma;
+				uniform float kSigma;
+				uniform float threshold;
+
+				varying vec2 vUv;
+
+				// https://github.com/BrutPitt/glslSmartDeNoise
+				void main() {
+
+					float radius = round(kSigma*sigma);
+					float radQ = radius * radius;
+
+					float invSigmaQx2 = .5 / (sigma * sigma);      // 1.0 / (sigma^2 * 2.0)
+					float invSigmaQx2PI = INV_PI * invSigmaQx2;    // 1/(2 * PI * sigma^2)
+
+					float invThresholdSqx2 = .5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
+					float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma^2)
+
+					vec4 centrPx = texture(img,vUv); 
+
+					float zBuff = 0.0;
+					vec4 aBuff = vec4(0.0);
+					vec2 size = vec2(textureSize(img, 0));
+
+					vec2 d;
+					for (d.x=-radius; d.x <= radius; d.x++) {
+						float pt = sqrt(radQ-d.x*d.x);       // pt = yRadius: have circular trend
+						for (d.y=-pt; d.y <= pt; d.y++) {
+							float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
+
+							vec4 walkPx =  texture(img,vUv+d/size);
+							vec4 dC = walkPx-centrPx;
+							float deltaFactor = exp( -dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+
+							zBuff += deltaFactor;
+							aBuff += deltaFactor*walkPx;
+						}
+					}
+					gl_FragColor = aBuff/zBuff;
+
+				}
+
+			`,
+
+		} );
+
+	}
 
 }

@@ -1,5 +1,5 @@
 import { PathTracingSceneGenerator } from './PathTracingSceneGenerator.js';
-import { RestirDiMaterial, SimpleMaterial, Pass, AverageSamplesMaterial } from '../materials/di/RestirDiMaterial.js';
+import { RestirDiMaterial, SimpleMaterial, Pass, AverageSamplesMaterial, DenoiseMaterial } from '../materials/di/RestirDiMaterial.js';
 import { ClampedInterpolationMaterial } from '../materials/fullscreen/ClampedInterpolationMaterial.js';
 import { MATERIAL_PIXELS } from '../uniforms/MaterialsTexture.js';
 import { SobolNumberMapGenerator } from '../utils/SobolNumberMapGenerator.js';
@@ -124,6 +124,7 @@ export class RestirPathTracer {
         this.passSaveSample = new FullScreenQuad( new RestirDiMaterial( Pass.SaveSample, { blending: THREE.NoBlending } ) );
         this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
         this.passAverageSamples = new FullScreenQuad( new AverageSamplesMaterial() );
+        this.passDenoise = new FullScreenQuad( new DenoiseMaterial() );
         this.passToneMap = new FullScreenQuad( new ClampedInterpolationMaterial( {
 			map: null,
 			transparent: true,
@@ -276,6 +277,14 @@ export class RestirPathTracer {
             ...this.sharedDefines,
 
         };
+        this.passDenoise.material.uniforms = {
+
+            img      : { value: null }, // to be set each render pass
+            sigma    : { value: 3.0 },
+            kSigma   : { value: 1.0 },
+            threshold: { value: 0.195 },
+
+        };
 
         // set dummy scene and camera
 		this.setScene( new THREE.Scene(), new THREE.PerspectiveCamera() );
@@ -339,23 +348,28 @@ export class RestirPathTracer {
         this.renderer.setRenderTarget( this.pingTarget );
         this.passShadePixel.render( this.renderer );
 
+        // denoise image
+        this.passDenoise.material.uniforms.img = { value: this.pingTarget.texture };
+        this.renderer.setRenderTarget( this.pongTarget );
+        this.passDenoise.render( this.renderer );
+
         // average samples, @todo: remove this stage, or make it optional
         this.passAverageSamples.material.uniforms.nSamples.value = this.nSamples;
         this.passAverageSamples.material.uniforms.curr.value = this.pungTarget.texture;
-        this.passAverageSamples.material.uniforms.newSample.value = this.pingTarget.texture;
-        this.renderer.setRenderTarget( this.pongTarget );
+        this.passAverageSamples.material.uniforms.newSample.value = this.pongTarget.texture;
+        this.renderer.setRenderTarget( this.pingTarget );
         this.passAverageSamples.render( this.renderer );
 
         // tone map
         this.renderer.setRenderTarget( ogRenderTarget );
         this.renderer.autoClear = ogAutoClear;
         this.passToneMap.material.onBeforeRender();
-        this.passToneMap.material.uniforms.map.value = this.pongTarget.texture;
+        this.passToneMap.material.uniforms.map.value = this.pingTarget.texture;
         this.passToneMap.render( this.renderer );
 
         // this.nSamples++;
 
-        [ this.pongTarget, this.pungTarget ] = [ this.pungTarget, this.pongTarget ];
+        [ this.pingTarget, this.pungTarget ] = [ this.pungTarget, this.pingTarget ];
         [ this.temporalReuseTargetA, this.temporalReuseTargetB ] = [ this.temporalReuseTargetB, this.temporalReuseTargetA ];
 
         this.sharedUniforms.invCameraWorldMatrixPrev.value.copy( this.camera.matrixWorldInverse );
