@@ -1,5 +1,5 @@
 import { PathTracingSceneGenerator } from './PathTracingSceneGenerator.js';
-import { RestirDiMaterial, SimpleMaterial, Pass, AverageSamplesMaterial, DenoiseMaterial } from '../materials/di/RestirDiMaterial.js';
+import { RestirDiMaterial, SimpleMaterial, Pass, AverageSamplesMaterial, SimpleDenoiseMaterial, AtrousDenoiseMaterial } from '../materials/di/RestirDiMaterial.js';
 import { ClampedInterpolationMaterial } from '../materials/fullscreen/ClampedInterpolationMaterial.js';
 import { MATERIAL_PIXELS } from '../uniforms/MaterialsTexture.js';
 import { SobolNumberMapGenerator } from '../utils/SobolNumberMapGenerator.js';
@@ -124,7 +124,7 @@ export class RestirPathTracer {
         this.passSaveSample = new FullScreenQuad( new RestirDiMaterial( Pass.SaveSample, { blending: THREE.NoBlending } ) );
         this.passShadePixel = new FullScreenQuad( new RestirDiMaterial( Pass.ShadePixel ) );
         this.passAverageSamples = new FullScreenQuad( new AverageSamplesMaterial() );
-        this.passDenoise = new FullScreenQuad( new DenoiseMaterial() );
+        this.passDenoise = new FullScreenQuad( new AtrousDenoiseMaterial() );
         this.passToneMap = new FullScreenQuad( new ClampedInterpolationMaterial( {
 			map: null,
 			transparent: true,
@@ -147,10 +147,11 @@ export class RestirPathTracer {
 
             format: RGBAFormat,
             type: FloatType,
-            minFilter: NearestFilter,
-            magFilter: NearestFilter,
+            // minFilter: NearestFilter,
+            // magFilter: NearestFilter,
             depthBuffer: false,
             generateMipmaps: false,
+            count: 3,
 
         } );
         this.pungTarget = new WebGLRenderTarget( 1, 1, {
@@ -277,14 +278,8 @@ export class RestirPathTracer {
             ...this.sharedDefines,
 
         };
-        this.passDenoise.material.uniforms = {
 
-            img      : { value: null }, // to be set each render pass
-            sigma    : { value: 3.0 },
-            kSigma   : { value: 1.0 },
-            threshold: { value: 0.195 },
-
-        };
+        this.passDenoise.material.uniforms.resolution = this.sharedUniforms.resolution;
 
         // set dummy scene and camera
 		this.setScene( new THREE.Scene(), new THREE.PerspectiveCamera() );
@@ -349,22 +344,40 @@ export class RestirPathTracer {
         this.passShadePixel.render( this.renderer );
 
         // denoise image
-        // this.passDenoise.material.uniforms.img = { value: this.pingTarget.texture };
-        // this.renderer.setRenderTarget( this.pongTarget );
+        // this.passDenoise.material.uniforms.colorMap = { value: this.pongTarget.textures[0] };
+        // this.passDenoise.material.uniforms.normalMap = { value: this.pongTarget.textures[1] };
+        // this.passDenoise.material.uniforms.posMap = { value: this.pongTarget.textures[2] };
+        // this.passDenoise.material.onBeforeRender();
+        // this.renderer.setRenderTarget( this.pingTarget );
+        // this.passDenoise.render( this.renderer );
+
+        // this.passDenoise.material.uniforms.colorMap = { value: this.pingTarget.texture };
+        // this.passDenoise.material.uniforms.normalMap = { value: this.pongTarget.textures[1] };
+        // this.passDenoise.material.uniforms.posMap = { value: this.pongTarget.textures[2] };
+        // this.passDenoise.material.onBeforeRender();
+        // this.renderer.setRenderTarget( this.pungTarget );
+        // this.passDenoise.render( this.renderer );
+
+        // this.passDenoise.material.uniforms.colorMap = { value: this.pungTarget.texture };
+        // this.passDenoise.material.uniforms.normalMap = { value: this.pongTarget.textures[1] };
+        // this.passDenoise.material.uniforms.posMap = { value: this.pongTarget.textures[2] };
+        // this.passDenoise.material.onBeforeRender();
+        // this.renderer.setRenderTarget( this.pingTarget );
         // this.passDenoise.render( this.renderer );
 
         // average samples, @todo: remove this stage, or make it optional
-        this.passAverageSamples.material.uniforms.nSamples.value = this.nSamples;
-        this.passAverageSamples.material.uniforms.curr.value = this.pungTarget.texture;
-        this.passAverageSamples.material.uniforms.newSample.value = this.pongTarget.texture;
-        this.renderer.setRenderTarget( this.pingTarget );
-        this.passAverageSamples.render( this.renderer );
+        // this.passAverageSamples.material.uniforms.nSamples.value = this.nSamples;
+        // this.passAverageSamples.material.uniforms.curr.value = this.pungTarget.texture;
+        // this.passAverageSamples.material.uniforms.newSample.value = this.pongTarget.textures[0];
+        // this.renderer.setRenderTarget( this.pingTarget );
+        // this.passAverageSamples.render( this.renderer );
 
         // tone map
         this.renderer.setRenderTarget( ogRenderTarget );
         this.renderer.autoClear = ogAutoClear;
         this.passToneMap.material.onBeforeRender();
-        this.passToneMap.material.uniforms.map.value = this.pingTarget.texture;
+        // this.passToneMap.material.uniforms.map.value = this.pingTarget.texture;
+        this.passToneMap.material.uniforms.map.value = this.pongTarget.textures[0];
         this.passToneMap.render( this.renderer );
 
         // this.nSamples++;
@@ -551,6 +564,15 @@ export class RestirPathTracer {
     doReset() {
 
         console.log( "reset happened" );
+
+        const dpr = window.devicePixelRatio;
+        const size = new THREE.Vector2();
+        this.renderer.getSize(size);
+
+        const fragmentWidth = size.width * dpr;
+        const fragmentHeight = size.height * dpr;
+
+        console.log(`Fragment resolution: ${fragmentWidth} x ${fragmentHeight}`);
 
         const ogRenderTarget = this.renderer.getRenderTarget();
         const ogClearAlpha = this.renderer.getClearAlpha();

@@ -490,6 +490,20 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 			#endif
 
+			#if RESTIR_PASS == PASS_SPATIAL_REUSE
+
+			uniform sampler2D pathX2_in;
+			uniform sampler2D pathInfo_in;
+			uniform sampler2D pathX3_in;
+
+			uniform sampler2D surfaceHit_faceNormal_dist;
+
+			layout(location = 0) out vec4 pathX2_out;
+			layout(location = 1) out vec4 pathInfo_out;
+			layout(location = 2) out vec4 pathX3_out;
+
+			#endif
+
 			#if RESTIR_PASS == PASS_SAVE_SAMPLE
 
 			uniform sampler2D pathX2_in;
@@ -505,6 +519,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			#if RESTIR_PASS == PASS_SHADE_PIXEL
 
 			layout(location = 0) out vec4 fragColor;
+			layout(location = 1) out vec4 normalMap; // for denoising
+			layout(location = 2) out vec4 posMap; // for denoising
 
 			uniform sampler2D surfaceHit_faceIndices;
 			uniform sampler2D surfaceHit_barycoord_side;
@@ -817,6 +833,12 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				// @todo: insert visibility pass?
 
 				#endif
+
+				#if RESTIR_PASS == PASS_SPATIAL_REUSE
+
+				int randBase = 1000;
+
+				#endif
 				
 				#if RESTIR_PASS == PASS_TEMPORAL_REUSE
 
@@ -973,6 +995,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				fragColor = vec4( 0.0, 0.0, 0.0, 1.0 );
 
+				normalMap = vec4( -1.0 );
+				posMap    = vec4( -1.0 );
+
 				vec4 pathInfo = texelFetch( pathInfo, ivec2( gl_FragCoord.xy ), 0 );
 
 				if ( pathInfo.x < 0.0 ) {
@@ -994,6 +1019,9 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				int x1_surfRecord;
 				SurfaceRecord surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ), x1_surfRecord );
+
+				normalMap = vec4( surf.normal, 1.0 );
+				posMap    = vec4( pathX1.xyz , 1.0 );
 
 				fragColor.xyz += surf.emission;
 
@@ -1108,7 +1136,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 }
 
-export class DenoiseMaterial extends ShaderMaterial {
+export class SimpleDenoiseMaterial extends ShaderMaterial {
 
 	constructor() {
 
@@ -1190,4 +1218,95 @@ export class DenoiseMaterial extends ShaderMaterial {
 
 	}
 
+}
+
+export class AtrousDenoiseMaterial extends ShaderMaterial {
+	constructor() {
+		super({
+			uniforms: {
+				colorMap: { value: null },
+				normalMap: { value: null },
+				posMap: { value: null },
+				c_phi: { value: 1.0 },
+				n_phi: { value: 0.5 },
+				p_phi: { value: 0.3 },
+				stepwidth: { value: 3.0 },
+				resolution: { value: null },
+			},
+			vertexShader: /* glsl */`
+				varying vec2 vUv;
+				void main() {
+					vUv = uv;
+					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+				}
+			`,
+			fragmentShader: /* glsl */`
+				uniform sampler2D colorMap, normalMap, posMap;
+				uniform float c_phi, n_phi, p_phi, stepwidth;
+				varying vec2 vUv;
+				uniform vec2 resolution;
+				const vec2 offset[25] = vec2[](
+					vec2(-2,-2), vec2(-1,-2), vec2(0,-2), vec2(1,-2), vec2(2,-2),
+					vec2(-2,-1), vec2(-1,-1), vec2(0,-1), vec2(1,-1), vec2(2,-1),
+					vec2(-2,0),  vec2(-1,0),  vec2(0,0),  vec2(1,0),  vec2(2,0),
+					vec2(-2,1),  vec2(-1,1),  vec2(0,1),  vec2(1,1),  vec2(2,1),
+					vec2(-2,2),  vec2(-1,2),  vec2(0,2),  vec2(1,2),  vec2(2,2)
+				);
+				const float kernel[25] = float[](
+					1.0/256.0, 1.0/64.0, 3.0/128.0, 1.0/64.0, 1.0/256.0,
+					1.0/64.0,  1.0/16.0, 3.0/32.0,  1.0/16.0, 1.0/64.0,
+					3.0/128.0, 3.0/32.0, 9.0/64.0,  3.0/32.0, 3.0/128.0,
+					1.0/64.0,  1.0/16.0, 3.0/32.0,  1.0/16.0, 1.0/64.0,
+					1.0/256.0, 1.0/64.0, 3.0/128.0, 1.0/64.0, 1.0/256.0
+				);
+				void main() {
+					vec4 sum  = vec4(0.0);
+					vec4 cval = texelFetch(colorMap,ivec2(gl_FragCoord.xy),0);
+					vec4 nval = texelFetch(normalMap,ivec2(gl_FragCoord.xy),0);
+					vec4 pval = texelFetch(posMap,ivec2(gl_FragCoord.xy),0);
+					// vec4 cval = texture(colorMap,vUv);
+					// vec4 nval = texture(normalMap,vUv);
+					// vec4 pval = texture(posMap,vUv);
+					vec2 _step = 1.0/resolution;
+
+					if (nval.w<0.0) {
+						gl_FragColor=cval;
+						return;
+					}
+
+					float cum_w = 0.0;
+					for (int i = 0; i < 25; ++i) {
+						vec2 uv = vUv+offset[i]*_step*stepwidth;
+
+						// vec4 ctmp = texture(colorMap,uv);
+						// vec4 ntmp = texture(normalMap,uv);
+						// vec4 ptmp = texture(posMap,uv);
+						vec4 ctmp = texelFetch(colorMap,ivec2(gl_FragCoord.xy+offset[i]*stepwidth),0);
+						vec4 ntmp = texelFetch(normalMap,ivec2(gl_FragCoord.xy+offset[i]*stepwidth),0);
+						vec4 ptmp = texelFetch(posMap,ivec2(gl_FragCoord.xy+offset[i]*stepwidth),0);
+
+						if (ntmp.w<0.0) continue;
+
+						vec4 t = cval-ctmp;
+						float dist2 = dot(t,t);
+						float c_w = min(exp(-(dist2)/c_phi), 1.0);
+
+						t = nval - ntmp;
+						dist2 = max(dot(t,t)/(stepwidth*stepwidth),0.0);
+						float n_w = min(exp(-(dist2)/n_phi), 1.0);
+
+						t = pval - ptmp;
+						dist2 = dot(t,t);
+						float p_w = min(exp(-(dist2)/p_phi),1.0);
+
+						float weight = c_w * n_w * p_w;
+						sum += ctmp * weight * kernel[i];
+						cum_w += weight*kernel[i];
+					}
+					gl_FragColor = sum/cum_w;
+					// gl_FragColor = cval;
+				}
+			`,
+		})
+	}
 }

@@ -68,8 +68,8 @@ async function init() {
 
 	// camera
 	camera = new PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.025, 500 );
-	camera.position.set( 2.7, 2.7, 16 );
-	camera.lookAt( 2.7, 2.7, 15 );
+	camera.position.set( 2.7, 2.7, 11.25 );
+	camera.lookAt( 2.7, 2.7, 0 );
 
 	// controls = new FlyControls( camera, renderer.domElement );
 	controls = new PointerLockControls( camera, renderer.domElement );
@@ -145,14 +145,14 @@ async function init() {
     ceiling.position.z = 5.55 / 2;
     ceiling.rotateX(Math.PI/2);
 
-    const areaLight = new THREE.RectAreaLight(0xffffff, 10, 1, 1);
+    const areaLight = new THREE.RectAreaLight(0xffffff, 12, 1, 1);
     areaLight.position.x = 5.55 / 2;
     areaLight.position.y = 5.55 - 1e-5;
     areaLight.position.z = 5.55 / 2;
     areaLight.rotateX(-Math.PI/2);
 
     const lightGeom = new THREE.PlaneGeometry(1, 1);
-    const lightEmissiveMat = new THREE.MeshPhysicalMaterial({ emissive: 0xffffff, emissiveIntensity: 10.0 });
+    const lightEmissiveMat = new THREE.MeshPhysicalMaterial({ emissive: 0xffffff, emissiveIntensity: 12.0 });
     const lightEmissiveTile = new THREE.Mesh(lightGeom, lightEmissiveMat);
     lightEmissiveTile.position.x = 5.55 / 2;
     lightEmissiveTile.position.y = 5.55 - 1e-5;
