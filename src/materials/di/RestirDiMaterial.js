@@ -444,7 +444,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			#if RESTIR_PASS == PASS_GEN_SAMPLE
 
 			/*
-			pathInfo.x: ok
+			pathInfo.x: resampling weight of sample in the reservoir
 			pathInfo.y: unbiased contrib weight
 			pathInfo.z: target function evaluated for selected sample
 			pathInfo.w: depth of primary ray // needed for spatial resampling, but unused for now
@@ -467,7 +467,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 			#endif
 
 			#if RESTIR_PASS == PASS_TEMPORAL_REUSE
-			// @cont: fix texture units too many error, maybe due to using the materials??
 
 			// We can't keep the g buffer data around, because it overflows the
 			// max texture units...
@@ -610,8 +609,6 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				pathInfo = vec4( 0.0 );
 				pathX3   = vec4( 0.0, 0.0, 0.0, -1.0 );
 
-				pathInfo.x = 1.0;
-
 				SurfaceHit surfaceHit;
 
 				Ray ray     = getCameraRay2();
@@ -663,6 +660,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					}
 
 					pathX2     = reservoir.sampleOut.pathX2;
+					pathInfo.x = reservoir.sampleOut.resamplingWeight;
 					pathInfo.y = reservoir.wSum / reservoir.phatOut;
 					pathInfo.z = reservoir.phatOut;
 
@@ -688,6 +686,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					}
 
 					pathX2     = reservoir.sampleOut.pathX2;
+					pathInfo.x = reservoir.sampleOut.resamplingWeight;
 					pathInfo.y = reservoir.wSum / reservoir.phatOut;
 					pathInfo.z = reservoir.phatOut;
 
@@ -729,8 +728,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 						RisSample samp;
 
 						samp.pathX2           = cont_pathX2;
-						samp.resamplingWeight = resamplingWeight;
 						samp.pathX3           = vec4( 0.0, 0.0, 0.0, -1.0 ); // path terminates
+						samp.resamplingWeight = resamplingWeight;
 
 						addSample( reservoir, samp, phat, rand( ++randBase ) );
 
@@ -789,8 +788,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 								RisSample samp;
 
 								samp.pathX2           = vec4( cont_pathX2 );
-								samp.resamplingWeight = resamplingWeight;
 								samp.pathX3           = vec4( emTri.barycoord, emTriMaterialIndex );
+								samp.resamplingWeight = resamplingWeight;
 
 								addSample( reservoir, samp, phat, rand( ++randBase ) );
 
@@ -810,8 +809,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 				pathX2     = reservoir.sampleOut.pathX2;
-				pathInfo.x = 1.0;
-				pathInfo.y = reservoir.wSum / ( reservoir.phatOut + 1e-5 );
+				pathInfo.x = reservoir.sampleOut.resamplingWeight;
+				pathInfo.y = reservoir.wSum;
 				pathInfo.z = reservoir.phatOut;
 				pathX3     = reservoir.sampleOut.pathX3;
 
@@ -870,7 +869,7 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 					pathInfo_prev.w > 0.95 * pathInfo.w &&
 					pathInfo_prev.w < 1.05 * pathInfo.w;
 
-				bool hasPrev = pathInfo_prev.x > 0.0 && depthOk && pathX3.w < 0.0;
+				bool hasPrev = pathInfo_prev.x > 0.0 && depthOk;
 				bool hasCurr = pathInfo.x      > 0.0;
 
 				if ( !hasPrev ) return; // Can't do temporal reuse. Go to next pass.
@@ -885,27 +884,31 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				}
 
-
 				Reservoir reservoir = initReservoir();
 
 				// @todo: why do these weights work?
-				// float misWeightCurr = 0.5;
-				// float misWeightPrev = 1.0 - misWeightCurr;
+				float misWeightCurr = 0.5;
+				float misWeightPrev = 1.0 - misWeightCurr;
 
-				float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
-				float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z + 1e-5 );
+				// float misWeightCurr = pathInfo.z      / ( pathInfo.z + pathInfo_prev.z );
+				// float misWeightPrev = pathInfo_prev.z / ( pathInfo.z + pathInfo_prev.z );
 
 				{
 
 					// @todo: we need to re-calculate the phat for previous frame's sample!
 
-					float resamplingWeight = misWeightPrev * pathInfo_prev.z * pathInfo_prev.y;
+					float resamplingWeight = misWeightPrev * pathInfo_prev.y;
 
 					RisSample samp;
 
 					samp.pathX2           = pathX2_prev;
-					samp.resamplingWeight = resamplingWeight;
 					samp.pathX3           = pathX3_prev;
+					samp.resamplingWeight = resamplingWeight;
+
+					// reservoir.sampleOut = samp;
+					// reservoir.phatOut   = pathInfo_prev.z;
+					// reservoir.wSum      = pathInfo_prev.y;
+					// reservoir.valid     = true;
 
 					addSample( reservoir, samp, pathInfo_prev.z, rand( ++randBase ) );
 
@@ -913,13 +916,13 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 
 				{
 
-					float resamplingWeight = misWeightCurr * pathInfo.z * pathInfo.y;
+					float resamplingWeight = misWeightCurr * pathInfo.y;
 
 					RisSample samp;
 
 					samp.pathX2           = pathX2;
-					samp.resamplingWeight = resamplingWeight;
 					samp.pathX3           = pathX3;
+					samp.resamplingWeight = resamplingWeight;
 
 					addSample( reservoir, samp, pathInfo.z, rand( ++randBase ) );
 
@@ -937,8 +940,8 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				}
 
 				pathX2_out     = reservoir.sampleOut.pathX2;
-				pathInfo_out.x = 1.0;
-				pathInfo_out.y = reservoir.wSum / ( reservoir.phatOut + 1e-5 );
+				pathInfo_out.x = reservoir.sampleOut.resamplingWeight;
+				pathInfo_out.y = reservoir.wSum;
 				pathInfo_out.z = reservoir.phatOut;
 				pathX3_out     = reservoir.sampleOut.pathX3;
 
@@ -987,14 +990,14 @@ export class RestirDiMaterial extends PhysicalPathTracingMaterial {
 				Ray        primaryRay = getCameraRay2();
 				vec4       pathX1     = getPathX1( surfaceHit, primaryRay );
 
-				float unbiasedContribWeight = pathInfo.y;
+				float unbiasedContribWeight = pathInfo.y / pathInfo.z;
 
 				int x1_surfRecord;
 				SurfaceRecord surf = readSurfaceRecord( ivec2( gl_FragCoord.xy ), x1_surfRecord );
 
 				fragColor.xyz += surf.emission;
 
-				if ( pathInfo.x < 1.0 ) {
+				if ( pathInfo.x <= 0.0 ) {
 
 					// Primary ray hit but no sample was selected.
 					return;
